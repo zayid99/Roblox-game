@@ -1,0 +1,74 @@
+/* Design tokens (spec §2.2, §2.3). The only colours, z-indices and easings the UI may use. */
+:root {
+  --ink: #1B1736;
+  --display: 'Lilita One', 'Fredoka', system-ui, sans-serif;
+  --body: 'Fredoka', system-ui, sans-serif;
+
+  /* Easing */
+  --ease-back: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-slam: cubic-bezier(.2, 1.4, .4, 1);
+  --ease-io: cubic-bezier(.65, 0, .35, 1);
+
+  /* Semantic button hues: hi (top), base, lo (bottom), lip (3D edge) */
+  --grass-hi: #8CF25E; --grass: #3FCB4B; --grass-lo: #23963A; --grass-lip: #156B27;
+  --sun-hi: #FFF07A;   --sun: #FFC92E;   --sun-lo: #F39A12;   --sun-lip: #B86400;
+  --coral-hi: #FF8C8C; --coral: #FF4D5E; --coral-lo: #D9233A; --coral-lip: #9A1027;
+  --sky-hi: #7FD8FF;   --sky: #34AFFF;   --sky-lo: #1679D9;   --sky-lip: #0E4FA0;
+  --grape-hi: #C79BFF; --grape: #9B5CFF; --grape-lo: #6A2FD1; --grape-lip: #451A96;
+  --teal-hi: #7FFBE6;  --teal: #2EE6C9;  --teal-lo: #14B39C;  --teal-lip: #0A7A6A;
+  --slate-hi: #D6DCE4; --slate: #A9B3C1; --slate-lo: #8792A3; --slate-lip: #5E6878;
+  --gold-a: #FFE680;   --gold-b: #FFB52E; --gold-c: #E07800; --gold-lip: #9A5200;
+
+  /* Surfaces */
+  --frame-hi: #1D5583; --frame: #123A5C; --frame-lo: #0B2740; --frame-rim: #E8B04A;
+  --rope-a: #E8B04A; --rope-b: #B97E2A; --rope-c: #7A4F14;
+  --well: #0A2236;
+  --tab-off: #0E304D; --tab-off-text: #9FC3E0;
+  --card: #FFF6E0; --card-edge: #E9CF98; --card-shade: #F2E2BC;
+  --text-ink: #1B1736; --text-muted: #5E6A80;
+  --hud-dark: #123A5C; --hud-dark-lo: #0B2740;
+  --backdrop: rgba(6, 20, 34, .6);
+  --lifering: #FF4D5E; --lifering-white: #FFFFFF;
+  --blush: #FF9AB6;
+
+  /* Stacking scale */
+  --z-world: 0; --z-hud: 10; --z-fade: 11; --z-hud-top: 20; --z-spot: 30; --z-backdrop: 40;
+  --z-panel: 50; --z-pills-raised: 55; --z-coach: 60; --z-toast: 70; --z-banner: 80; --z-reveal: 85;
+  --z-resume: 90; --z-loading: 100;
+
+  /* Currencies */
+  --cash-grad: linear-gradient(180deg, #F4FFB8 0%, #8CFF5A 48%, #2FC23A 100%);
+  --cash: #7DFF5A; --income: #FFD84A; --price-no: #FF4A5A;
+  --pearl-grad: linear-gradient(180deg, #FFFFFF 0%, #BDF6FF 50%, #4FC8EE 100%); --pearl: #8FF0FF;
+  --gold-grad: linear-gradient(180deg, #FFF6C2 0%, #FFE680 40%, #FFB52E 100%);
+
+  /* Rarity: hi (centre glow), base, edge (dark) */
+  --r0-hi: #E3E9F0; --r0: #A9B8C9; --r0-edge: #5E6B7C;
+  --r1-hi: #A8F58A; --r1: #59D36A; --r1-edge: #1F7A2B;
+  --r2-hi: #8FD3FF; --r2: #3AA8FF; --r2-edge: #134F9F;
+  --r3-hi: #DDB0FF; --r3: #B065FF; --r3-edge: #5B1FA0;
+  --r4-hi: #FFE680; --r4: #FFB52E; --r4-edge: #9A5200;
+  --r5-hi: #FF9AB6; --r5: #FF4F7B; --r5-edge: #8E0E2E;
+  --r6-hi: #5EF3FF; --r6: #22F0FF; --r6-edge: #1A1030;
+  --rainbow: conic-gradient(#FF4F7B, #FFB52E, #FFF07A, #59D36A, #22F0FF, #3AA8FF, #B065FF, #FF4F7B);
+  --mut-gold: #FFD23F; --mut-diamond: #8EF3FF;
+
+  /* Safe-area padding (§4.0) */
+  --sl: max(12px, calc(env(safe-area-inset-left, 0px) + 8px));
+  --sr: max(12px, calc(env(safe-area-inset-right, 0px) + 8px));
+  --st: max(12px, calc(env(safe-area-inset-top, 0px) + 8px));
+  --sb: max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px));
+
+  --vig: rgba(255, 40, 60, .55);
+}
+
+/* Rarity helper: [data-r="n"] maps --rh/--rc/--re to that rarity. */
+[data-r="0"] { --rh: var(--r0-hi); --rc: var(--r0); --re: var(--r0-edge); }
+[data-r="1"] { --rh: var(--r1-hi); --rc: var(--r1); --re: var(--r1-edge); }
+[data-r="2"] { --rh: var(--r2-hi); --rc: var(--r2); --re: var(--r2-edge); }
+[data-r="3"] { --rh: var(--r3-hi); --rc: var(--r3); --re: var(--r3-edge); }
+[data-r="4"] { --rh: var(--r4-hi); --rc: var(--r4); --re: var(--r4-edge); }
+[data-r="5"] { --rh: var(--r5-hi); --rc: var(--r5); --re: var(--r5-edge); }
+[data-r="6"] { --rh: var(--r6-hi); --rc: var(--r6); --re: var(--r6-edge); }
