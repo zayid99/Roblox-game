@@ -1,34 +1,14 @@
 import { Vector3 } from 'three';
 import { ECONOMY } from './config';
 import { generateCourse, zoneAtZ, type Course, type Island } from './course';
-import { rollCreature, type CreatureRef } from './creatures';
-import { PlayerSim, type PlayerEvent, type PlayerInput } from './player';
+import { rollCreature } from './creatures';
+import { PlayerSim, type PlayerInput } from './player';
 import { Rng } from './rng';
-import { GameState, type DeliveryResult } from './state';
+import { GameState } from './state';
 import { WaveSim } from './wave';
 
-export interface WildCreature extends CreatureRef {
-  uid: number;
-  pos: Vector3;
-  zone: number;
-  island: Island;
-  /** Sim time when it washed up (for the pop-in animation). */
-  bornAt: number;
-}
-
-export type SimEvent =
-  | { type: 'player'; event: PlayerEvent }
-  | { type: 'collect'; creature: WildCreature }
-  | { type: 'carryFull' }
-  | { type: 'deliver'; result: DeliveryResult }
-  | { type: 'splash'; lost: CreatureRef[] }
-  | { type: 'respawn'; reason: 'sea' | 'wave' }
-  | { type: 'zone'; zone: number; first: boolean }
-  | { type: 'waveWarning'; golden: boolean }
-  | { type: 'surgeStart'; golden: boolean }
-  | { type: 'surgeEnd'; golden: boolean }
-  | { type: 'washed'; uids: number[] }
-  | { type: 'spawned' };
+import type { SimEvent, WildCreature } from '../contracts';
+export type { SimEvent, WildCreature } from '../contracts';
 
 export const SPLASH_TIME = 1.6;
 
@@ -72,10 +52,10 @@ export class GameSim {
       for (const p of island.spawnPoints) {
         if (!this.rng.chance(ECONOMY.spawnChance)) continue;
         const c = rollCreature(rarity, golden, this.rng);
-        this.wild.push({ ...c, uid: this.nextUid++, pos: p.clone(), zone: island.zone, island, bornAt: this.time });
+        this.wild.push({ ...c, uid: this.nextUid++, pos: p.clone(), zone: island.zone, island, bornAt: this.time, golden, featured: false });
       }
     }
-    this.events.push({ type: 'spawned' });
+    this.events.push({ type: 'spawned', golden });
   }
 
   isOnHome(): boolean {
@@ -102,10 +82,11 @@ export class GameSim {
     const wasGolden = this.wave.golden;
     this.wave.update(dt);
     for (const e of this.wave.events) {
-      if (e === 'warning') this.events.push({ type: 'waveWarning', golden: this.wave.golden });
-      else if (e === 'surgeStart') this.events.push({ type: 'surgeStart', golden: this.wave.golden });
+      const number = this.wave.count + 1;
+      if (e === 'warning') this.events.push({ type: 'waveWarning', golden: this.wave.golden, big: false, number });
+      else if (e === 'surgeStart') this.events.push({ type: 'surgeStart', golden: this.wave.golden, big: false, number });
       else {
-        this.events.push({ type: 'surgeEnd', golden: wasGolden });
+        this.events.push({ type: 'surgeEnd', golden: wasGolden, big: false, number: this.wave.count, survived: false });
         this.respawnCreatures(wasGolden);
       }
     }
@@ -159,7 +140,7 @@ export class GameSim {
     this.collectNearby();
 
     if (this.state.carried.length > 0 && this.isOnHome()) {
-      this.events.push({ type: 'deliver', result: this.state.deliver() });
+      this.events.push({ type: 'deliver', result: this.state.deliver(), bonusCash: 0, chainMult: 1, tripBest: 0, closeCall: false });
     }
 
     const zone = zoneAtZ(this.course, player.pos.z);
@@ -177,7 +158,7 @@ export class GameSim {
       player.anchor = null;
       player.mode = 'air';
       player.vel.set(0, 0, 0);
-      this.events.push({ type: 'splash', lost: this.state.loseCarried() });
+      this.events.push({ type: 'splash', lost: this.state.loseCarried(), practice: false });
     }
   }
 
@@ -196,7 +177,7 @@ export class GameSim {
       }
       this.state.pickUp(c);
       this.wild.splice(i, 1);
-      this.events.push({ type: 'collect', creature: c });
+      this.events.push({ type: 'collect', creature: c, isNewSpecies: false, isNewMutation: false });
     }
   }
 }

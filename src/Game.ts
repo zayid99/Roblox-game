@@ -136,8 +136,8 @@ export class Game {
     this.input.onFirstGesture = () => this.sfx.unlock();
     this.input.onKey = (code) => this.onKey(code);
     this.hud.setTouchMode(this.input.touchMode);
-    this.hud.setSound(this.state.sound);
-    this.sfx.setMuted(!this.state.sound);
+    this.hud.setSound(!this.state.settings.muted);
+    this.sfx.setMuted(!!this.state.settings.muted);
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -457,10 +457,10 @@ export class Game {
   }
 
   private toggleSound(): void {
-    this.state.sound = !this.state.sound;
+    this.state.settings.muted = !this.state.settings.muted;
     this.sfx.unlock();
-    this.sfx.setMuted(!this.state.sound);
-    this.hud.setSound(this.state.sound);
+    this.sfx.setMuted(!!this.state.settings.muted);
+    this.hud.setSound(!this.state.settings.muted);
     this.save();
   }
 
@@ -469,8 +469,8 @@ export class Game {
     else if (code === 'KeyU') this.hud.togglePanel('upgrades');
     else if (code === 'KeyI' || code === 'KeyB') this.hud.togglePanel('index');
     else if (code === 'KeyM') this.toggleSound();
-    else if (DEBUG && code === 'KeyG') this.state.earn(Math.max(1000, this.state.cash));
-    else if (DEBUG && code === 'KeyT') this.sim.wave.forceSurge();
+    else if (DEBUG && code === 'F2') this.state.earn(Math.max(1000, this.state.cash));
+    else if (DEBUG && code === 'F3') this.sim.wave.forceSurge();
   }
 
   // ---------- Visuals ----------

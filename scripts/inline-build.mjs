@@ -16,7 +16,8 @@ html = html.replace(/<link rel="stylesheet" crossorigin href="\.\/([^"]+)">/g, (
   return `<style>${readFileSync(join(dist, file), 'utf8')}</style>`;
 });
 
-if (/src="\.\/assets|href="\.\/assets/.test(html)) {
+// Also catches asset URLs referenced from inside the inlined JS or CSS (fonts, images).
+if (/src="\.\/assets|href="\.\/assets|["'(]\.?\/?assets\//.test(html)) {
   console.error('inline-build: some assets were not inlined');
   process.exit(1);
 }

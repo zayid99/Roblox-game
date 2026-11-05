@@ -14,8 +14,13 @@ import {
   type UpgradeLevels,
 } from './economy';
 import type { PlayerStats } from './player';
+import type { Settings } from '../contracts';
 
 export const SAVE_VERSION = 1;
+
+export function defaultSettings(): Settings {
+  return { music: 50, sound: 80, muted: false, quality: 'auto', autoTier: null, reduceMotion: false, camSens: 1, invertY: false, swingAssist: true };
+}
 
 export interface SaveData {
   v: number;
@@ -28,7 +33,9 @@ export interface SaveData {
   index: Record<string, number>;
   flags: Record<string, boolean>;
   bestZone: number;
-  sound: boolean;
+  /** v1 field; v2 saves use settings. */
+  sound?: boolean;
+  settings?: Partial<Settings>;
   /** Epoch ms when the save was written (for offline earnings). */
   savedAt: number;
 }
@@ -49,7 +56,7 @@ export class GameState {
   index: Record<string, number> = {};
   flags: Record<string, boolean> = {};
   bestZone = -1;
-  sound = true;
+  settings: Settings = defaultSettings();
 
   constructor() {
     this.syncBaseSize();
@@ -71,10 +78,15 @@ export class GameState {
     return rebirthMultiplier(this.rebirths);
   }
 
-  incomePerSec(): number {
+  /** Pedestal income with the rebirth multiplier, before any temporary boosts. */
+  baseIncomePerSec(): number {
     let total = 0;
     for (const c of this.base) if (c) total += creatureIncome(c);
     return total * this.multiplier;
+  }
+
+  incomePerSec(): number {
+    return this.baseIncomePerSec();
   }
 
   earn(amount: number): void {
@@ -210,7 +222,7 @@ export class GameState {
       index: { ...this.index },
       flags: { ...this.flags },
       bestZone: this.bestZone,
-      sound: this.sound,
+      settings: { ...this.settings },
       savedAt: now,
     };
   }
@@ -248,7 +260,15 @@ export class GameState {
       for (const [k, v] of Object.entries(d.flags)) if (typeof v === 'boolean') this.flags[k] = v;
     }
     this.bestZone = typeof d.bestZone === 'number' ? d.bestZone : -1;
-    this.sound = d.sound !== false;
+    this.settings = defaultSettings();
+    if (d.sound === false) this.settings.muted = true;
+    if (d.settings && typeof d.settings === 'object') {
+      const t = d.settings as Record<string, unknown>;
+      const def = this.settings as unknown as Record<string, unknown>;
+      for (const k of Object.keys(def)) {
+        if (k in t && (typeof t[k] === typeof def[k] || (k === 'autoTier' && (t[k] === null || typeof t[k] === 'string')))) def[k] = t[k];
+      }
+    }
     return true;
   }
 }

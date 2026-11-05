@@ -8,13 +8,13 @@ export interface Rarity {
 }
 
 export const RARITIES: readonly Rarity[] = [
-  { name: 'Common', color: '#c3cbd6', income: 1 },
-  { name: 'Uncommon', color: '#59d36a', income: 3 },
-  { name: 'Rare', color: '#3aa8ff', income: 10 },
-  { name: 'Epic', color: '#b065ff', income: 30 },
-  { name: 'Legendary', color: '#ffb52e', income: 100 },
-  { name: 'Mythic', color: '#ff4f7b', income: 300 },
-  { name: 'Secret', color: '#22f0ff', income: 1000 },
+  { name: 'Common', color: '#A9B8C9', income: 1 },
+  { name: 'Uncommon', color: '#59D36A', income: 3 },
+  { name: 'Rare', color: '#3AA8FF', income: 10 },
+  { name: 'Epic', color: '#B065FF', income: 30 },
+  { name: 'Legendary', color: '#FFB52E', income: 100 },
+  { name: 'Mythic', color: '#FF4F7B', income: 300 },
+  { name: 'Secret', color: '#22F0FF', income: 1000 },
 ];
 
 export interface Mutation {

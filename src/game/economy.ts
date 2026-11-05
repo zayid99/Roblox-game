@@ -1,12 +1,13 @@
 import { ECONOMY } from './config';
 import type { PlayerStats } from './player';
+import type { IconId } from '../contracts';
 
 export type UpgradeKey = 'speed' | 'reach' | 'power' | 'carry' | 'slots';
 
 export interface UpgradeDef {
   key: UpgradeKey;
   name: string;
-  icon: string;
+  iconId: IconId;
   desc: string;
   maxLevel: number;
   baseCost: number;
@@ -19,7 +20,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
   speed: {
     key: 'speed',
     name: 'Run Speed',
-    icon: '👟',
+    iconId: 'speed',
     desc: 'Run faster on islands',
     maxLevel: 16,
     baseCost: 20,
@@ -30,7 +31,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
   reach: {
     key: 'reach',
     name: 'Rope Reach',
-    icon: '🪢',
+    iconId: 'reach',
     desc: 'Grab hooks from farther away',
     maxLevel: 14,
     baseCost: 40,
@@ -41,7 +42,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
   power: {
     key: 'power',
     name: 'Swing Power',
-    icon: '💪',
+    iconId: 'power',
     desc: 'Pump harder and fling farther',
     maxLevel: 12,
     baseCost: 30,
@@ -52,7 +53,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
   carry: {
     key: 'carry',
     name: 'Carry Slots',
-    icon: '🎒',
+    iconId: 'carry',
     desc: 'Carry more creatures per run',
     maxLevel: 6,
     baseCost: 100,
@@ -63,7 +64,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
   slots: {
     key: 'slots',
     name: 'Base Pedestals',
-    icon: '🏝️',
+    iconId: 'pedestal',
     desc: 'Room for more creatures at home',
     maxLevel: 8,
     baseCost: 150,
@@ -117,21 +118,36 @@ export function offlineEarnings(incomePerSec: number, elapsedSec: number): numbe
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
 
-/** 1234 -> "1.23K", 5 -> "5", 0.5 -> "0.5". */
+function trimZeros(t: string): string {
+  return t.includes('.') ? t.replace(/\.?0+$/, '') : t;
+}
+
+/** Spec §2.1: integers below 1000, then 3 significant digits with K/M/B/T/Qa/Qi ("1.25K", "12.5K", "1M"). */
 export function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return '∞';
   const sign = n < 0 ? '-' : '';
   let v = Math.abs(n);
-  if (v < 1000) return sign + (v < 10 && v % 1 !== 0 ? v.toFixed(1) : Math.floor(v).toString());
+  if (v < 1000) return sign + Math.floor(v).toString();
   let i = 0;
-  while (v >= 1000 && i < SUFFIXES.length - 1) {
+  while (v >= 999.5 && i < SUFFIXES.length - 1) {
     v /= 1000;
     i++;
   }
   const digits = v >= 100 ? 0 : v >= 10 ? 1 : 2;
-  return `${sign}${v.toFixed(digits)}${SUFFIXES[i]}`;
+  return `${sign}${trimZeros(v.toFixed(digits))}${SUFFIXES[i]}`;
 }
 
 export function formatCash(n: number): string {
   return `$${formatNumber(n)}`;
+}
+
+/** Income per second: one decimal below 10 ("$1.2/s", "$3/s"), integers to 999, then suffixes. */
+export function formatIncome(perSec: number): string {
+  if (Number.isFinite(perSec) && Math.abs(perSec) < 10) return `$${trimZeros(perSec.toFixed(1))}/s`;
+  return `${formatCash(perSec)}/s`;
+}
+
+/** Pearls: always a whole number with thousands separators ("1,250"). */
+export function formatPearls(n: number): string {
+  return Math.floor(Math.max(0, n)).toLocaleString('en-US');
 }

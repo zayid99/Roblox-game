@@ -343,7 +343,7 @@ export class Hud {
       const now = def.format(def.value(level));
       const next = maxed ? 'MAX' : def.format(def.value(level + 1));
       row.innerHTML = `
-        <div class="up-icon">${def.icon}</div>
+        <div class="up-icon">${def.iconId}</div>
         <div class="up-info">
           <div class="up-name">${def.name} <span class="up-level">Lv ${level}/${def.maxLevel}</span></div>
           <div class="up-desc">${def.desc}</div>
