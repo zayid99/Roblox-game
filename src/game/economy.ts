@@ -87,6 +87,37 @@ export function upgradeCost(key: UpgradeKey, level: number): number {
   return Math.round(def.baseCost * Math.pow(def.growth, level));
 }
 
+/** Total cost of the next n levels starting at `level` (stops at the max level). */
+export function bulkCost(key: UpgradeKey, level: number, n: number): number {
+  const end = Math.min(UPGRADES[key].maxLevel, level + Math.max(0, Math.floor(n)));
+  let total = 0;
+  for (let l = level; l < end; l++) total += upgradeCost(key, l);
+  return total;
+}
+
+/** How many levels in a row `cash` buys, starting at `level`. */
+export function maxAffordable(key: UpgradeKey, level: number, cash: number): number {
+  let n = 0;
+  let left = cash;
+  for (let l = level; l < UPGRADES[key].maxLevel; l++) {
+    const c = upgradeCost(key, l);
+    if (c > left) break;
+    left -= c;
+    n++;
+  }
+  return n;
+}
+
+/** The cheapest next level across all upgrades (Infinity when everything is maxed). */
+export function cheapestUpgradeCost(levels: UpgradeLevels): number {
+  let best = Infinity;
+  for (const key of UPGRADE_ORDER) {
+    if (levels[key] >= UPGRADES[key].maxLevel) continue;
+    best = Math.min(best, upgradeCost(key, levels[key]));
+  }
+  return best;
+}
+
 export function playerStats(levels: UpgradeLevels): PlayerStats {
   return {
     runSpeed: UPGRADES.speed.value(levels.speed),
