@@ -1,444 +1,454 @@
-import { HOME_FRONT_Z } from '../game/config';
-import type { Course } from '../game/course';
-import { MUTATIONS, RARITIES, SPECIES, creatureIncome, creatureLabel, getSpecies, type CreatureRef } from '../game/creatures';
-import { UPGRADES, UPGRADE_ORDER, formatCash, rebirthMultiplier, type UpgradeKey } from '../game/economy';
-import type { GameState } from '../game/state';
-import type { WavePhase } from '../game/wave';
-import type { IconFactory } from '../render/icons';
+// The v2 HUD facade (spec §10.2). One class the lead drives each frame with a HudView.
+import './tokens.css';
+import './components.css';
+import './hud.css';
+import './panels.css';
+import './fx.css';
+import type {
+  BannerSpec, FloatKind, HudFocus, HudPart, HudView, LayoutMode, PanelKind, PanelTab, ScreenPt, ToastSpec,
+} from '../contracts';
+import { getSpecies, type CreatureRef } from '../game/creatures';
+import { installArtVars, porthole } from './art';
+import { Confetti } from './confetti';
+import { el, isReducedMotion, pressable, replay, setReducedMotion, setText, setUiSound } from './dom';
+import { CoinFly, FloatText } from './fx';
+import { ensureIconSprite, icon } from './icons';
+import { LayoutWatcher } from './layout';
+import type { PanelEnv } from './panels/env';
+import { FreePanel } from './panels/free';
+import { IndexPanel } from './panels/index';
+import { PanelShell, type PanelContent } from './panels/panel';
+import { SettingsPanel } from './panels/settings';
+import { ShopPanel } from './panels/shop';
+import { WelcomePanel } from './panels/welcome';
+import { BannersPart } from './parts/banners';
+import { CarryPart } from './parts/carry';
+import { CashPart } from './parts/cash';
+import { ChainPart } from './parts/chain';
+import { controlsCardHtml, maybeCoach } from './parts/coach';
+import { CourseBarPart, type CourseLayout } from './parts/courseBar';
+import { RailPart } from './parts/rail';
+import { ResumePart } from './parts/resume';
+import { EdgeArrowPart, ReticlePart } from './parts/reticle';
+import { ToastsPart } from './parts/toasts';
+import { TouchPart } from './parts/touch';
+import { TrackerPart } from './parts/tracker';
+import { WaveMeterPart } from './parts/waveMeter';
+import { Reveal } from './reveal';
+import type { HudCtx, HudDeps } from './types';
 
-export interface HudView {
-  cash: number;
-  income: number;
-  rebirths: number;
-  wavePhase: WavePhase;
-  waveTimer: number;
-  golden: boolean;
-  frontZ: number;
-  playerZ: number;
-  carried: CreatureRef[];
-  capacity: number;
-  canAffordSomething: boolean;
-}
+export type { HudDeps } from './types';
+export { loadFonts } from './fonts';
+export { icon, iconSvg } from './icons';
+export { logoSvg } from './logo';
+export type { CourseLayout } from './parts/courseBar';
 
-export interface HudActions {
-  buy(key: UpgradeKey): void;
-  rebirth(): void;
-  toggleSound(): void;
-  panelChanged(open: boolean): void;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', html = ''): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (html) e.innerHTML = html;
-  return e;
-}
-
-function fmtTime(s: number): string {
-  const t = Math.max(0, Math.ceil(s));
-  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-}
+const PANEL_HUE: Record<PanelKind, 'grass' | 'grape' | 'sun' | 'sky'> = { shop: 'grass', index: 'grape', free: 'sun', settings: 'sky', welcome: 'grass' };
+const PANEL_TITLE: Record<PanelKind, string> = { shop: 'SHOP', index: 'INDEX', free: 'FREE', settings: 'SETTINGS', welcome: 'WELCOME BACK' };
+const HIDEABLE: HudPart[] = ['cash', 'pearls', 'rail', 'wave', 'course', 'tracker', 'carry', 'chain', 'topRight'];
 
 export class Hud {
   readonly jumpButton: HTMLButtonElement;
   readonly joyBase: HTMLElement;
   readonly joyKnob: HTMLElement;
 
-  private readonly cashValue: HTMLElement;
-  private readonly income: HTMLElement;
-  private readonly rebirthTag: HTMLElement;
-  private readonly waveChip: HTMLElement;
-  private readonly waveText: HTMLElement;
-  private readonly waveBar: HTMLElement;
-  private readonly upgradeBadge: HTMLElement;
-  private readonly soundBtn: HTMLButtonElement;
-  private readonly carry: HTMLElement;
-  private readonly hintEl: HTMLElement;
-  private readonly toasts: HTMLElement;
-  private readonly bannerEl: HTMLElement;
+  private readonly root: HTMLElement;
+  private readonly layer: HTMLElement;
+  private readonly ov: HTMLElement;
+  private readonly fxLayer: HTMLElement;
+  private readonly watcher: LayoutWatcher;
+  private readonly ctx: HudCtx;
+  private readonly env: PanelEnv;
+
+  private readonly cash: CashPart;
+  private readonly rail: RailPart;
+  private readonly wave: WaveMeterPart;
+  private readonly course: CourseBarPart;
+  private readonly carry: CarryPart;
+  private readonly tracker: TrackerPart;
+  private readonly chain: ChainPart;
+  private readonly reticle: ReticlePart;
+  private readonly edge: EdgeArrowPart;
+  private readonly toasts: ToastsPart;
+  private readonly banners: BannersPart;
+  private readonly touchPart: TouchPart;
+  private readonly resume: ResumePart;
+  private readonly floats: FloatText;
+  private readonly coins: CoinFly;
+  private readonly confettiFx: Confetti;
+  private readonly revealFx: Reveal;
+  private readonly topRight: HTMLElement;
+  private readonly soundBtn: HTMLElement;
+  private readonly vignette: HTMLElement;
   private readonly flashEl: HTMLElement;
-  private readonly mmPlayer: HTMLElement;
-  private readonly mmWave: HTMLElement;
-  private readonly backdrop: HTMLElement;
-  private readonly panel: HTMLElement;
-  private readonly touch: HTMLElement;
+  private readonly countEl: HTMLElement;
+  private readonly topCenter: HTMLElement;
 
-  private panelKind: 'upgrades' | 'index' | 'welcome' | null = null;
-  private last: Record<string, string | number | boolean> = {};
-  private bannerTimer = 0;
-  private flashTimer = 0;
-  private readonly zMin: number;
-  private readonly zMax: number;
+  private shell: PanelShell | null = null;
+  private content: PanelContent | null = null;
+  private kind: PanelKind | null = null;
+  private focus: HudFocus | null = null;
+  private lastView: HudView | null = null;
+  private reduce = false;
+  private last = {
+    touch: null as boolean | null, action: null as boolean | null, hide: '', vig: '', muted: null as boolean | null, surge: false,
+  };
+  private actionUntil = 0;
 
-  constructor(
-    private readonly root: HTMLElement,
-    course: Course,
-    private readonly icons: IconFactory,
-    private readonly state: GameState,
-    private readonly actions: HudActions,
-  ) {
-    root.innerHTML = '';
+  constructor(root: HTMLElement, private readonly deps: HudDeps) {
+    setUiSound(deps.sound);
+    ensureIconSprite();
+    installArtVars();
+    this.reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    setReducedMotion(this.reduce);
 
-    const tl = el('div', 'hud-top-left');
-    const cash = el('div', 'cash', '<span class="cash-icon">💰</span>');
-    this.cashValue = el('span', 'cash-value', '$0');
-    cash.append(this.cashValue);
-    this.income = el('div', 'income', '+$0/s');
-    this.rebirthTag = el('div', 'rebirth-tag hidden');
-    tl.append(cash, this.income, this.rebirthTag);
+    this.root = el('div', 'sos hud-root');
+    this.layer = el('div', 'hud-layer');
+    this.ov = el('div', 'hud-ov');
+    this.fxLayer = el('div', 'hud-fx');
+    this.root.append(this.ov, this.layer, this.fxLayer);
+    root.appendChild(this.root);
+    this.watcher = new LayoutWatcher(this.root, this.layer);
 
-    const tc = el('div', 'hud-top-center');
-    this.waveChip = el('div', 'wave-chip');
-    this.waveText = el('span', 'wave-text', 'Next wave');
-    const bar = el('div', 'wave-bar');
-    this.waveBar = el('i');
-    bar.append(this.waveBar);
-    this.waveChip.append(el('span', 'wave-icon', '🌊'), this.waveText, bar);
-    this.toasts = el('div', 'toasts');
-    tc.append(this.waveChip, this.toasts);
+    this.ctx = {
+      deps,
+      layout: () => this.watcher.mode,
+      touch: () => this.root.classList.contains('touch'),
+      openPanel: (k, t) => this.openPanel(k, t),
+      closePanel: () => this.closePanel(),
+      centerOf: (e) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      },
+    };
+    this.env = {
+      ...this.ctx,
+      confetti: (at, n, hue) => this.confetti(at, n, hue),
+      coinFly: (from, amount, cur, n) => this.coinFly(from, amount, cur, n),
+      flash: (c, ms) => this.flash(c, ms),
+      banner: (title, sub, hue) => this.banner({ title, sub, hue, priority: 'info' }),
+      reduce: () => this.reduce,
+      toast: (t) => this.toast(t),
+      refresh: () => this.refreshPanel(),
+    };
 
-    const tr = el('div', 'hud-top-right');
-    const upBtn = el('button', 'btn btn-upgrades', '🛒 <span>Upgrades</span>');
-    this.upgradeBadge = el('b', 'badge hidden', '!');
-    upBtn.append(this.upgradeBadge);
-    upBtn.title = 'Upgrades (U)';
-    upBtn.addEventListener('click', () => this.openUpgrades());
-    const idxBtn = el('button', 'btn btn-index', '📖 <span>Index</span>');
-    idxBtn.title = 'Creature Index (I)';
-    idxBtn.addEventListener('click', () => this.openIndex());
-    this.soundBtn = el('button', 'btn btn-sound', '🔊');
-    this.soundBtn.title = 'Sound (M)';
-    this.soundBtn.addEventListener('click', () => actions.toggleSound());
-    tr.append(upBtn, idxBtn, this.soundBtn);
+    // ----- HUD parts -----
+    this.cash = new CashPart();
+    this.cash.cashPill.dataset.anchor = 'cash';
+    this.cash.pearlPill.dataset.anchor = 'pearls';
+    this.rail = new RailPart(this.ctx);
+    this.wave = new WaveMeterPart();
+    this.course = new CourseBarPart();
+    this.topCenter = el('div', 'tc');
+    this.topCenter.append(this.wave.el, this.course.el);
+    this.carry = new CarryPart(deps);
+    this.tracker = new TrackerPart();
+    this.tracker.onRowDone = (rw, reward) => {
+      const from = this.ctx.centerOf(rw);
+      if (reward.cash) void this.coinFly(from, reward.cash, 'cash');
+      if (reward.pearls) void this.coinFly(from, reward.pearls, 'pearl', 5);
+    };
+    this.chain = new ChainPart();
+    this.toasts = new ToastsPart(() => this.watcher.mode);
+    this.banners = new BannersPart();
+    this.banners.onBusyChange = (busy) => this.root.classList.toggle('banner-up', busy);
+    this.touchPart = new TouchPart();
+    this.jumpButton = this.touchPart.jumpButton;
+    this.joyBase = this.touchPart.joyBase;
+    this.joyKnob = this.touchPart.joyKnob;
+    this.resume = new ResumePart();
 
-    // Minimap: the course as a vertical strip, home at the bottom.
-    const mm = el('div', 'minimap');
-    const track = el('div', 'mm-track');
-    this.zMax = course.home.max.z;
-    this.zMin = course.endZ - 10;
-    for (const zone of course.zones) {
-      const seg = el('div', 'mm-zone');
-      seg.style.bottom = `${this.pct(zone.startZ)}%`;
-      seg.style.height = `${this.pct(zone.endZ) - this.pct(zone.startZ)}%`;
-      seg.style.background = RARITIES[zone.def.rarity].color;
-      seg.title = zone.def.name;
-      track.append(seg);
-    }
-    const homeSeg = el('div', 'mm-home');
-    homeSeg.style.height = `${this.pct(HOME_FRONT_Z)}%`;
-    track.append(homeSeg);
-    for (const lh of course.lighthouses) {
-      const dot = el('div', 'mm-lighthouse', '🗼');
-      dot.style.bottom = `${this.pct((lh.tower.min.z + lh.tower.max.z) / 2)}%`;
-      track.append(dot);
-    }
-    this.mmWave = el('div', 'mm-wave hidden');
-    this.mmPlayer = el('div', 'mm-player');
-    track.append(this.mmWave, this.mmPlayer);
-    mm.append(track);
+    this.topRight = el('div', 'tr');
+    this.soundBtn = el('button', 'rbtn', `<span class="disc">${icon('sound-on', 26)}</span>`);
+    this.soundBtn.dataset.anchor = 'sound';
+    this.soundBtn.setAttribute('aria-label', 'Sound');
+    pressable(this.soundBtn, () => deps.actions.toggleMute());
+    const settingsBtn = el('button', 'rbtn', `<span class="disc">${icon('settings', 26)}</span>`);
+    settingsBtn.dataset.anchor = 'settings';
+    settingsBtn.setAttribute('aria-label', 'Settings');
+    pressable(settingsBtn, () => this.openPanel('settings'));
+    this.topRight.append(this.soundBtn, settingsBtn);
 
-    this.hintEl = el('div', 'hint hidden');
-    this.carry = el('div', 'carry');
-    this.bannerEl = el('div', 'banner hidden');
+    this.layer.append(
+      this.cash.el, this.rail.el, this.topCenter, this.topRight, this.tracker.el, this.chain.el,
+      this.carry.el, this.touchPart.el, this.toasts.el, this.banners.el,
+    );
+
+    // ----- Unzoomed overlays -----
+    this.vignette = el('div', 'vignette');
+    this.reticle = new ReticlePart();
+    this.edge = new EdgeArrowPart();
+    this.ov.append(this.vignette, this.reticle.el, this.edge.el);
     this.flashEl = el('div', 'flash');
+    this.countEl = el('div', 'countdown');
+    this.floats = new FloatText(this.fxLayer);
+    this.coins = new CoinFly(this.fxLayer);
+    this.confettiFx = new Confetti(this.fxLayer);
+    const compactHost = el('div', 'reveal-host');
+    this.revealFx = new Reveal(deps, {
+      banner: (b) => this.banner(b),
+      confetti: (n, hue) => this.confetti('center', n, hue),
+      flash: (c, ms) => this.flash(c, ms),
+      setBigReveal: (on) => this.root.classList.toggle('big-reveal', on),
+      multiplier: () => this.lastView?.multiplier ?? 1,
+    }, compactHost);
+    this.layer.appendChild(compactHost);
+    this.layer.appendChild(this.revealFx.el);
+    this.fxLayer.append(this.countEl, this.flashEl, this.resume.el);
 
-    this.touch = el('div', 'touch-controls hidden');
-    this.joyBase = el('div', 'joy-base');
-    this.joyKnob = el('div', 'joy-knob');
-    this.joyBase.append(this.joyKnob);
-    this.jumpButton = el('button', 'jump-btn', 'JUMP<small>hold to swing</small>');
-    this.touch.append(this.joyBase, this.jumpButton);
+    this.watcher.onChange(() => this.onLayoutChange());
+  }
 
-    this.backdrop = el('div', 'panel-backdrop hidden');
-    this.panel = el('div', 'panel');
-    this.backdrop.append(this.panel);
-    this.backdrop.addEventListener('pointerdown', (e) => {
-      if (e.target === this.backdrop && this.panelKind !== 'welcome') this.closePanel();
+  // ---------------------------------------------------------------- frame
+  get layout(): LayoutMode {
+    return this.watcher.mode;
+  }
+
+  update(realDt: number, v: HudView): void {
+    this.lastView = v;
+    const reduce = this.reduce;
+    if (v.touch !== this.last.touch) {
+      this.last.touch = v.touch;
+      this.root.classList.toggle('touch', v.touch);
+    }
+    // Action fade: on immediately, off 600 ms after the action ends.
+    const now = performance.now();
+    if (v.action) this.actionUntil = now + 600;
+    const action = v.action || now < this.actionUntil;
+    if (action !== this.last.action) {
+      this.last.action = action;
+      for (const e of [this.rail.el, this.tracker.el, this.cash.pearlPill]) e.classList.toggle('hud-fade', action);
+    }
+    const hideKey = HIDEABLE.filter((p) => v.hide[p]).join(',');
+    if (hideKey !== this.last.hide) {
+      this.last.hide = hideKey;
+      const map: Record<HudPart, HTMLElement[]> = {
+        cash: [this.cash.cashPill, this.cash.el.querySelector('.income-chip') as HTMLElement],
+        pearls: [this.cash.pearlPill],
+        rail: [this.rail.el],
+        wave: [this.wave.el],
+        course: [this.course.el],
+        tracker: [this.tracker.el],
+        carry: [this.carry.el],
+        chain: [this.chain.el],
+        topRight: [this.topRight],
+      };
+      for (const p of HIDEABLE) for (const e of map[p]) e.classList.toggle('part-hidden', !!v.hide[p]);
+    }
+    const surge = v.wave.phase === 'surge';
+    if (surge !== this.last.surge) {
+      this.last.surge = surge;
+      this.toasts.setSurge(surge);
+    }
+    this.banners.setState(surge, v.action);
+
+    this.cash.update(realDt, v.cash, v.income, v.multiplier, v.rebirths, v.pearls, reduce);
+    this.rail.update(v.rail, reduce);
+    this.wave.update(v.wave, reduce);
+    this.course.update(v.course);
+    this.carry.update(v.carried, v.capacity, v.tripBonusPct, reduce);
+    this.tracker.update(v.tracker, surge, this.watcher.mode);
+    this.chain.update(v.chain, reduce);
+    this.reticle.update(v.reticle, reduce);
+    this.edge.update(v.edgeArrow, window.innerWidth, window.innerHeight);
+    this.touchPart.update(v);
+    this.toasts.update(realDt);
+    this.banners.update(realDt);
+
+    const vig = v.vignette.kind === 'none' || v.vignette.strength <= 0 ? 'none' : `${v.vignette.kind}:${v.vignette.strength.toFixed(2)}`;
+    if (vig !== this.last.vig) {
+      this.last.vig = vig;
+      this.vignette.dataset.kind = v.vignette.kind;
+      this.vignette.style.opacity = vig === 'none' ? '0' : String(Math.min(1, v.vignette.strength));
+    }
+  }
+
+  /** Muted state for the sound buoy (lead calls it on change). Not in the §10.2 list; see report. */
+  setMuted(muted: boolean): void {
+    if (muted === this.last.muted) return;
+    this.last.muted = muted;
+    this.soundBtn.querySelector('.disc')!.innerHTML = icon(muted ? 'sound-off' : 'sound-on', 26);
+  }
+
+  /** Real zone widths and lighthouse positions for the course bar (optional; equal widths otherwise). */
+  setCourseLayout(l: CourseLayout): void {
+    this.course.setLayout(l);
+  }
+
+  // ---------------------------------------------------------------- feedback
+  toast(t: ToastSpec): void {
+    this.toasts.push(t);
+  }
+
+  banner(b: BannerSpec): void {
+    this.banners.push(b);
+  }
+
+  float(at: ScreenPt, text: string, kind: FloatKind, mergeKey?: string): void {
+    this.floats.show(at, text, kind, mergeKey);
+  }
+
+  coinFly(from: ScreenPt, amount: number, currency: 'cash' | 'pearl', coins?: number): Promise<void> {
+    const income = this.lastView?.income ?? 1;
+    const n = Math.max(1, Math.min(12, coins ?? CoinFly.coinsFor(amount, income)));
+    const per = amount / n;
+    if (currency === 'cash') this.cash.heldCash += amount;
+    else this.cash.heldPearls += amount;
+    const target = currency === 'cash' ? this.cash.cashIcon : this.cash.pearlIcon;
+    const to = () => this.ctx.centerOf(target);
+    return this.coins.fly(from, to, currency, n, () => this.cash.release(currency, per));
+  }
+
+  creatureToSlot(from: ScreenPt, c: CreatureRef, slot: number): void {
+    const target = this.carry.slotEl(slot);
+    if (!target) return;
+    const src = this.deps.portraits.get(c);
+    const r = getSpecies(c.speciesId).rarity;
+    const node = el('div', 'fly-portrait', src ? `<img src="${src}" alt="">` : icon('creature', 56));
+    node.dataset.r = String(r);
+    target.style.visibility = 'hidden';
+    this.coins.arcNode(node, from, this.ctx.centerOf(target), 350, () => {
+      target.style.visibility = '';
+      if (!this.reduce) replay(target, 'fx-pop');
     });
-
-    root.append(this.flashEl, tl, tc, tr, mm, this.hintEl, this.carry, this.bannerEl, this.touch, this.backdrop);
   }
 
-  private pct(z: number): number {
-    return ((this.zMax - z) / (this.zMax - this.zMin)) * 100;
+  reveal(c: CreatureRef, mode: 'compact' | 'big', indexCount: string): Promise<void> {
+    return this.revealFx.play(c, mode, indexCount);
   }
 
-  get panelOpen(): boolean {
-    return this.panelKind !== null;
+  confetti(at: ScreenPt | 'center', count: number, hue?: string): void {
+    this.confettiFx.burst(at, count, hue);
   }
 
-  setTouchMode(on: boolean): void {
-    this.touch.classList.toggle('hidden', !on);
-    this.root.classList.toggle('touch', on);
+  countdown(n: 3 | 2 | 1): void {
+    this.countEl.innerHTML = `<span class="t-stroke">${n}</span>`;
+    replay(this.countEl, 'go');
   }
 
-  setSound(on: boolean): void {
-    this.soundBtn.textContent = on ? '🔊' : '🔇';
-  }
-
-  private changed(key: string, value: string | number | boolean): boolean {
-    if (this.last[key] === value) return false;
-    this.last[key] = value;
-    return true;
-  }
-
-  update(dt: number, v: HudView): void {
-    const cash = formatCash(v.cash);
-    if (this.changed('cash', cash)) this.cashValue.textContent = cash;
-    const income = `+${formatCash(v.income)}/s`;
-    if (this.changed('income', income)) this.income.textContent = income;
-    if (this.changed('rebirths', v.rebirths)) {
-      this.rebirthTag.classList.toggle('hidden', v.rebirths === 0);
-      this.rebirthTag.textContent = `⭐ Rebirth ${v.rebirths} · ×${rebirthMultiplier(v.rebirths).toFixed(1)} cash`;
-    }
-
-    let text: string;
-    let cls: string;
-    let fill: number;
-    if (v.wavePhase === 'surge') {
-      text = v.golden ? 'GOLDEN WAVE! Get home or up high!' : 'WAVE! Get home or up high!';
-      cls = 'surge';
-      fill = 1;
-    } else if (v.wavePhase === 'warning') {
-      text = `${v.golden ? 'Golden wave' : 'Wave'} in ${fmtTime(v.waveTimer)}!`;
-      cls = 'warning';
-      fill = 1 - v.waveTimer / 70;
-    } else {
-      text = `${v.golden ? '✨ Golden wave' : 'Next wave'} in ${fmtTime(v.waveTimer)}`;
-      cls = v.golden ? 'calm golden' : 'calm';
-      fill = 1 - v.waveTimer / 90;
-    }
-    if (this.changed('waveText', text)) this.waveText.textContent = text;
-    if (this.changed('waveCls', cls)) this.waveChip.className = `wave-chip ${cls}`;
-    const fillPct = `${Math.round(Math.max(0, Math.min(1, fill)) * 100)}%`;
-    if (this.changed('waveFill', fillPct)) this.waveBar.style.width = fillPct;
-
-    this.mmPlayer.style.bottom = `${Math.max(0, Math.min(100, this.pct(v.playerZ)))}%`;
-    const surge = v.wavePhase === 'surge';
-    if (this.changed('mmWaveOn', surge)) this.mmWave.classList.toggle('hidden', !surge);
-    if (surge) this.mmWave.style.bottom = `${Math.max(0, Math.min(100, this.pct(v.frontZ)))}%`;
-
-    const carryKey = `${v.capacity}|${v.carried.map((c) => `${c.speciesId}:${c.mutation}`).join(',')}`;
-    if (this.changed('carry', carryKey)) this.renderCarry(v.carried, v.capacity);
-
-    if (this.changed('badge', v.canAffordSomething)) this.upgradeBadge.classList.toggle('hidden', !v.canAffordSomething);
-
-    if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) this.bannerEl.classList.add('hidden');
-    }
-    if (this.flashTimer > 0) {
-      this.flashTimer -= dt;
-      if (this.flashTimer <= 0) this.flashEl.classList.remove('on');
-    }
-  }
-
-  private renderCarry(carried: CreatureRef[], capacity: number): void {
-    this.carry.innerHTML = '';
-    for (let i = 0; i < capacity; i++) {
-      const c = carried[i];
-      const slot = el('div', 'carry-slot');
-      if (c) {
-        const s = getSpecies(c.speciesId);
-        slot.style.borderColor = RARITIES[s.rarity].color;
-        slot.classList.add('full');
-        const img = el('img');
-        img.src = this.icons.get(c);
-        img.alt = creatureLabel(c);
-        slot.title = `${creatureLabel(c)} (${RARITIES[s.rarity].name}) ${formatCash(creatureIncome(c))}/s`;
-        slot.append(img);
-        if (c.mutation > 0) slot.append(el('span', `mut mut-${c.mutation}`, MUTATIONS[c.mutation].name[0]));
-      }
-      this.carry.append(slot);
-    }
-  }
-
-  toast(text: string, color = '#ffffff'): void {
-    const t = el('div', 'toast');
-    t.textContent = text;
-    t.style.color = color;
-    this.toasts.prepend(t);
-    while (this.toasts.children.length > 4) this.toasts.lastChild?.remove();
-    setTimeout(() => t.classList.add('out'), 2200);
-    setTimeout(() => t.remove(), 2700);
-  }
-
-  banner(title: string, sub = '', color = '#ffffff', seconds = 2.6): void {
-    this.bannerEl.innerHTML = '';
-    const tEl = el('div', 'banner-title');
-    tEl.textContent = title;
-    tEl.style.color = color;
-    const sEl = el('div', 'banner-sub');
-    sEl.textContent = sub;
-    this.bannerEl.append(tEl, sEl);
-    this.bannerEl.classList.remove('hidden');
-    // Restart the pop animation.
-    void this.bannerEl.offsetWidth;
-    this.bannerEl.classList.add('pop');
-    this.bannerTimer = seconds;
-  }
-
-  hint(text: string | null): void {
-    if (!this.changed('hint', text ?? '')) return;
-    this.hintEl.classList.toggle('hidden', !text);
-    if (text) this.hintEl.textContent = text;
-  }
-
-  flash(color: string, seconds = 0.5): void {
+  flash(color: string, ms = 250): void {
     this.flashEl.style.background = color;
-    this.flashEl.classList.add('on');
-    this.flashTimer = seconds;
+    this.flashEl.style.animationDuration = `${ms}ms`;
+    replay(this.flashEl, 'go');
   }
 
-  // ---------- Panels ----------
-
-  togglePanel(kind: 'upgrades' | 'index'): void {
-    if (this.panelKind === kind) this.closePanel();
-    else if (kind === 'upgrades') this.openUpgrades();
-    else this.openIndex();
+  // ---------------------------------------------------------------- panels
+  get openPanelKind(): PanelKind | null {
+    return this.kind;
   }
 
-  private showPanel(kind: 'upgrades' | 'index' | 'welcome'): void {
-    const wasOpen = this.panelKind !== null;
-    this.panelKind = kind;
-    this.backdrop.classList.remove('hidden');
-    if (!wasOpen) this.actions.panelChanged(true);
+  get openPanelTab(): PanelTab | null {
+    return (this.content?.tab as PanelTab | null) ?? null;
+  }
+
+  openPanel(kind: PanelKind, tab?: PanelTab): void {
+    if (this.kind === kind && this.content) {
+      if (tab && this.content.setTab && tab !== this.content.tab) this.content.setTab(tab);
+      return;
+    }
+    if (this.shell) {
+      this.content?.destroy?.();
+      this.shell.destroy();
+    }
+    this.kind = kind;
+    this.root.classList.add('panel-open');
+    const shell = new PanelShell(this.layer, {
+      kind,
+      title: PANEL_TITLE[kind],
+      hue: PANEL_HUE[kind],
+      backdropClose: kind !== 'welcome',
+      onClose: () => (kind === 'welcome' ? (this.content as WelcomePanel | null)?.collectFromClose() : this.closePanel()),
+    });
+    this.shell = shell;
+    switch (kind) {
+      case 'shop':
+        this.content = new ShopPanel(shell, this.env, tab ?? 'upgrades');
+        break;
+      case 'free':
+        this.content = new FreePanel(shell, this.env, tab ?? 'daily');
+        maybeCoach(this.deps, shell.el, 'coach:free');
+        break;
+      case 'index':
+        this.content = new IndexPanel(shell, this.env);
+        maybeCoach(this.deps, shell.el, 'coach:index');
+        break;
+      case 'settings':
+        this.content = new SettingsPanel(shell, this.env);
+        break;
+      case 'welcome':
+        this.content = new WelcomePanel(shell, this.env);
+        break;
+    }
+    if (kind !== 'shop' && kind !== 'free') this.deps.actions.panelChanged(kind);
+    if (this.focus) this.content?.setFocus?.(this.focus);
   }
 
   closePanel(): void {
-    if (!this.panelKind) return;
-    this.panelKind = null;
-    this.backdrop.classList.add('hidden');
-    this.panel.innerHTML = '';
-    this.actions.panelChanged(false);
+    if (!this.shell) return;
+    const shell = this.shell;
+    this.content?.destroy?.();
+    this.shell = null;
+    this.content = null;
+    this.kind = null;
+    this.root.classList.remove('panel-open');
+    void shell.close();
+    this.deps.actions.panelChanged(null);
   }
 
-  private header(title: string): HTMLElement {
-    const h = el('div', 'panel-head');
-    h.append(el('h2', '', title));
-    const close = el('button', 'btn close', '✕');
-    close.addEventListener('click', () => this.closePanel());
-    h.append(close);
-    return h;
+  refreshPanel(): void {
+    this.content?.refresh();
   }
 
-  openUpgrades(): void {
-    this.showPanel('upgrades');
-    this.renderUpgrades();
+  setFocus(f: HudFocus | null): void {
+    const same = JSON.stringify(f) === JSON.stringify(this.focus);
+    if (same) return;
+    this.focus = f;
+    this.content?.setFocus?.(f);
   }
 
-  renderUpgrades(): void {
-    if (this.panelKind !== 'upgrades') return;
-    const s = this.state;
-    this.panel.innerHTML = '';
-    this.panel.className = 'panel upgrades';
-    this.panel.append(this.header('🛒 Upgrades'));
-    this.panel.append(el('div', 'panel-cash', `You have <b>${formatCash(s.cash)}</b> · earning <b>${formatCash(s.incomePerSec())}/s</b>`));
-    const list = el('div', 'upgrade-list');
-    for (const key of UPGRADE_ORDER) {
-      const def = UPGRADES[key];
-      const level = s.levels[key];
-      const maxed = level >= def.maxLevel;
-      const row = el('div', 'upgrade-row');
-      const now = def.format(def.value(level));
-      const next = maxed ? 'MAX' : def.format(def.value(level + 1));
-      row.innerHTML = `
-        <div class="up-icon">${def.iconId}</div>
-        <div class="up-info">
-          <div class="up-name">${def.name} <span class="up-level">Lv ${level}/${def.maxLevel}</span></div>
-          <div class="up-desc">${def.desc}</div>
-          <div class="up-stat">${now} ${maxed ? '' : `→ <b>${next}</b>`}</div>
-        </div>`;
-      const btn = el('button', 'btn buy');
-      if (maxed) {
-        btn.textContent = 'MAXED';
-        btn.disabled = true;
-      } else {
-        const cost = s.upgradeCost(key);
-        btn.textContent = formatCash(cost);
-        btn.classList.toggle('cant', s.cash < cost);
-        btn.addEventListener('click', () => this.actions.buy(key));
-      }
-      row.append(btn);
-      list.append(row);
-    }
-    this.panel.append(list);
-
-    const rb = el('div', 'rebirth-box');
-    const cost = s.rebirthCost();
-    rb.innerHTML = `
-      <div class="rb-title">⭐ Rebirth</div>
-      <div class="rb-desc">Earn <b>×${rebirthMultiplier(s.rebirths + 1).toFixed(1)}</b> cash forever (now ×${rebirthMultiplier(s.rebirths).toFixed(1)}).
-      Resets your cash and upgrades. You keep your creatures and Index.</div>`;
-    const rbBtn = el('button', 'btn rebirth', `Rebirth · ${formatCash(cost)}`);
-    rbBtn.classList.toggle('cant', !s.canRebirth());
-    // Two taps to confirm (no browser popups: they can be blocked inside game-portal iframes).
-    let armedUntil = 0;
-    rbBtn.addEventListener('click', () => {
-      if (!s.canRebirth() || performance.now() < armedUntil) {
-        this.actions.rebirth();
-        return;
-      }
-      armedUntil = performance.now() + 3000;
-      rbBtn.textContent = 'Tap again to rebirth!';
-      setTimeout(() => {
-        if (rbBtn.isConnected) rbBtn.textContent = `Rebirth · ${formatCash(cost)}`;
-      }, 3000);
+  showControlsCard(ms: number): void {
+    const card = el('div', 'controls-card card', `<div class="cc-h t-d">CONTROLS</div>${controlsCardHtml(this.ctx.touch())}`);
+    const scrim = el('div', 'cc-wrap');
+    scrim.appendChild(card);
+    const close = () => {
+      scrim.classList.add('out');
+      window.setTimeout(() => scrim.remove(), 160);
+    };
+    scrim.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      close();
     });
-    rb.append(rbBtn);
-    this.panel.append(rb);
+    this.layer.appendChild(scrim);
+    window.setTimeout(close, ms);
   }
 
-  openIndex(): void {
-    this.showPanel('index');
-    const s = this.state;
-    this.panel.innerHTML = '';
-    this.panel.className = 'panel index';
-    const found = SPECIES.filter((sp) => (s.index[sp.id] ?? 0) > 0).length;
-    this.panel.append(this.header(`📖 Creature Index · ${found}/${SPECIES.length}`));
-    this.panel.append(el('div', 'panel-cash', 'Grab every creature in every mutation: Normal, Gold, Diamond, Rainbow.'));
-    const grid = el('div', 'index-grid');
-    for (const sp of SPECIES) {
-      const mask = s.index[sp.id] ?? 0;
-      const card = el('div', `index-card${mask ? '' : ' unknown'}`);
-      const rarity = RARITIES[sp.rarity];
-      card.style.borderColor = rarity.color;
-      if (mask) {
-        const img = el('img');
-        img.src = this.icons.get({ speciesId: sp.id, mutation: 0 });
-        img.alt = sp.name;
-        card.append(img);
-      } else {
-        card.append(el('div', 'unknown-icon', '?'));
-      }
-      card.append(el('div', 'ic-name', mask ? sp.name : '???'));
-      const meta = el('div', 'ic-meta');
-      meta.innerHTML = `<span style="color:${rarity.color}">${rarity.name}</span>`;
-      card.append(meta);
-      const dots = el('div', 'ic-dots');
-      MUTATIONS.forEach((m, i) => {
-        const d = el('i', mask & (1 << i) ? 'on' : '');
-        d.style.background = mask & (1 << i) ? m.color : '';
-        d.title = m.name;
-        dots.append(d);
-      });
-      card.append(dots);
-      grid.append(card);
-    }
-    this.panel.append(grid);
+  showResume(onResume: () => void): void {
+    this.resume.show(onResume);
   }
 
-  showWelcome(earned: number, onCollect: () => void): void {
-    this.showPanel('welcome');
-    this.panel.innerHTML = '';
-    this.panel.className = 'panel welcome';
-    this.panel.append(el('h2', '', '👋 Welcome back!'));
-    this.panel.append(el('p', '', `Your creatures earned <b>${formatCash(earned)}</b> while you were away.`));
-    const btn = el('button', 'btn buy big', 'Collect');
-    btn.addEventListener('click', () => {
-      onCollect();
-      this.closePanel();
-    });
-    this.panel.append(btn);
+  // ---------------------------------------------------------------- anchors
+  anchor(id: string): HTMLElement | null {
+    if (id === 'jump') return this.jumpButton;
+    if (id.startsWith('rail:')) return this.rail.anchor(id.slice(5) as never);
+    const fromPanel = this.content?.anchor?.(id);
+    if (fromPanel) return fromPanel;
+    return this.root.querySelector(`[data-anchor="${CSS.escape(id)}"]`) as HTMLElement | null;
+  }
+
+  anchorPoint(id: string): ScreenPt | null {
+    const a = this.anchor(id);
+    return a ? this.ctx.centerOf(a) : null;
+  }
+
+  setReduceMotion(on: boolean): void {
+    this.reduce = on;
+    setReducedMotion(on);
+  }
+
+  private onLayoutChange(): void {
+    if (this.kind && this.content) this.content.refresh();
   }
 }
+
+// Re-exported so tree-shaking keeps helpers the lead may want (porthole for the loading screen).
+export { porthole, setText, isReducedMotion };

@@ -1,0 +1,79 @@
+/* FX: floating text, coins, flash, countdown, confetti canvas, reveals, resume overlay. */
+
+.flt { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; }
+.flt.go { opacity: 1; animation: fltRise 900ms var(--ease-out) both; }
+.flt .flt-in { position: absolute; left: 0; top: 0; translate: -50% -50%; white-space: nowrap; font-size: 26px; --sw: 7px; --sd: 3px; }
+.flt.go .flt-in { animation: fltPop 220ms var(--ease-out) both; }
+.flt .flt-in.remerge { animation: fltRemerge 120ms var(--ease-out); }
+@keyframes fltRise { 0% { translate: 0 0; opacity: 1; } 66% { opacity: 1; } 100% { translate: var(--dx, 0) -56px; opacity: 0; } }
+@keyframes fltPop { 0% { scale: .4; opacity: 0; } 55% { scale: 1.25; opacity: 1; } 100% { scale: 1; opacity: 1; } }
+@keyframes fltRemerge { from { scale: 1.2; } to { scale: 1; } }
+.k-cash { --grad: var(--cash-grad); font-size: 26px; }
+.k-income { --grad: linear-gradient(180deg, #FFF6C2, var(--income)); font-size: 18px !important; --sw: 5px !important; }
+.k-pearl { --grad: var(--pearl-grad); font-size: 22px !important; }
+.k-perfect { --grad: linear-gradient(180deg, #FFF07A, #FFC92E 60%, #F39A12); font-size: 34px !important; --sw: 9px !important; --sd: 4px !important; rotate: -6deg; }
+.k-chain { --grad: linear-gradient(180deg, #FFF07A, #FFC92E); font-size: 30px !important; --sw: 8px !important; }
+.k-bonus { --grad: linear-gradient(180deg, #FFB0B6, var(--coral)); font-size: 28px !important; --sw: 8px !important; }
+
+.coin { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; opacity: 0; will-change: transform; }
+.fly-portrait { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; z-index: 5; }
+.fly-portrait img { width: 100%; height: 100%; object-fit: contain; }
+
+.flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; z-index: 3; }
+.flash.go { animation: flash 250ms linear both; }
+@keyframes flash { from { opacity: .7; } to { opacity: 0; } }
+
+.countdown { position: absolute; left: 50%; top: 42%; opacity: 0; pointer-events: none; }
+.countdown span { display: block; translate: -50% -50%; font-size: 120px; --sw: .2em; --sd: .09em; }
+.countdown.go { animation: countIn 900ms var(--ease-out) both; }
+@keyframes countIn { 0% { scale: 1.4; opacity: 0; } 15% { opacity: 1; } 70% { scale: 1; opacity: 1; } 100% { scale: 1; opacity: 0; } }
+
+.confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+
+/* C24 compact reveal */
+.reveal-c { position: relative; width: 280px; height: 120px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 8px; border-radius: 18px; border: 4px solid var(--ink);
+  background: var(--card); box-shadow: inset 0 -5px 0 var(--card-shade), 0 5px 0 var(--ink); animation: revIn 260ms var(--ease-back) both; overflow: visible; }
+.reveal-c.legend { border-color: var(--re); box-shadow: inset 0 -5px 0 var(--card-shade), 0 0 0 3px var(--ink), 0 5px 0 var(--ink); }
+.reveal-c.out { animation: revOut 200ms var(--ease-in) both; }
+@keyframes revIn { from { transform: translateX(120%); } to { transform: none; } }
+@keyframes revOut { to { transform: translateX(120%); } }
+.reveal-c .rc-ph { margin-top: -18px; }
+.reveal-c .rc-info { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; flex: 1; }
+.reveal-c .rc-st { height: 20px; padding: 0 8px; border-radius: 6px; background: var(--coral); border: 3px solid var(--ink); font: 400 13px/14px var(--display); color: #fff; rotate: -4deg; }
+.reveal-c .rc-st.mut { background: var(--grape); }
+.reveal-c .rc-name { font-size: 22px; color: var(--text-ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reveal-c .rc-line { display: flex; gap: 8px; align-items: baseline; }
+.reveal-c .rc-line b { font-weight: 400; font-size: 15px; color: #1E9A45; }
+.reveal-c .rc-line span { font: 600 13px var(--body); color: var(--text-muted); }
+.reveal-c .shine-sweep.once::after { animation-iteration-count: 1; }
+
+/* Big reveal */
+.reveal-layer { position: absolute; inset: 0; pointer-events: none; }
+.reveal-big { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.reveal-big .rb-dim { position: absolute; inset: 0; background: rgba(6,20,34,.45); animation: fadeIn 120ms both; }
+.reveal-big .rb-burst { position: absolute; left: 50%; top: 50%; width: 520px; height: 520px; margin: -260px 0 0 -260px; border-radius: 50%;
+  background: repeating-conic-gradient(var(--rc) 0 10deg, transparent 10deg 20deg); opacity: .55;
+  -webkit-mask: radial-gradient(circle, #000 25%, transparent 68%); mask: radial-gradient(circle, #000 25%, transparent 68%);
+  animation: fadeIn 300ms both, spin 12000ms linear infinite; }
+.reveal-big .rb-por { position: relative; animation: bigSpin 600ms var(--ease-back) both; }
+@keyframes bigSpin { 0% { transform: perspective(600px) rotateY(540deg) scale(.2); } 80% { transform: perspective(600px) rotateY(0) scale(1.15); } 100% { transform: scale(1); } }
+.reveal-big .rb-tags { position: absolute; left: 50%; top: calc(50% + 100px); translate: -50% 0; display: flex; gap: 10px; align-items: center; animation: fadeIn 200ms 500ms both; }
+.reveal-big .rb-tags .chip { height: 32px; font-size: 16px; padding: 0 12px 0 4px; border: 3px solid var(--ink); }
+.reveal-big.out { animation: fadeOut 220ms var(--ease-in) both; }
+
+/* C22 resume overlay */
+.resume { position: absolute; inset: 0; z-index: var(--z-resume); background: var(--backdrop); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 24px; pointer-events: auto; cursor: pointer; }
+.resume.on { display: flex; animation: fadeIn 180ms both; }
+.rs-btn { position: relative; width: 120px; height: 120px; border-radius: 50%; border: 4px solid var(--ink); display: flex; align-items: center; justify-content: center; padding-left: 8px;
+  background: radial-gradient(circle at 50% 30%, var(--sun-hi), var(--sun) 55%, var(--sun-lo)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35), inset 0 -6px 0 var(--sun-lip), 0 6px 0 var(--ink);
+  animation: breathe 1000ms var(--ease-io) infinite alternate; }
+.rs-btn::before { content: ''; position: absolute; left: 16%; right: 16%; top: 7%; height: 34%; border-radius: 50%; background: linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,.08)); }
+.rs-btn .ic { position: relative; }
+@keyframes breathe { from { scale: 1; } to { scale: 1.06; } }
+.rs-txt { font-size: 52px; --sw: .2em; --sd: .09em; }
+[data-layout="portrait"] .rs-txt, [data-layout="landscape"] .rs-txt { font-size: 40px; }
+.reduce-motion .rs-btn { animation: none; }
+
+[data-layout="landscape"] .reveal-c, [data-layout="portrait"] .reveal-c { width: 230px; height: 100px; }
+[data-layout="landscape"] .reveal-c .porthole, [data-layout="portrait"] .reveal-c .porthole { --ph: 80px !important; }
+[data-layout="landscape"] .reveal-c .rc-name, [data-layout="portrait"] .reveal-c .rc-name { font-size: 18px; }

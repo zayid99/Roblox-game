@@ -1,4 +1,4 @@
-import './ui/style.css';
+import './ui/legacy/style.css';
 import { Game } from './Game';
 
 function showError(message: string): void {
