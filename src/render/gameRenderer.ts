@@ -32,6 +32,7 @@ import { collectHitStop, grabHitStop, perfectSlowMo, TRAUMA } from './juice';
 import { sharedTime } from './materials';
 import { Particles } from './particles';
 import { PortraitFactory } from './portraits';
+import { Props } from './props';
 import { DprController, resolveTier, TIERS, type TierParams } from './quality';
 import { Ribbon } from './ribbon';
 import { Rope } from './rope';
@@ -103,6 +104,7 @@ export class GameRenderer {
   private guides!: Guides;
   private objects!: GameplayObjects;
   private coldOpen!: ColdOpen;
+  private props: Props | null = null;
 
   private reduceMotion = false;
   private mood = 0;
@@ -197,6 +199,8 @@ export class GameRenderer {
     this.guides = new Guides(this.root);
     this.objects = new GameplayObjects(course);
     this.coldOpen = new ColdOpen(this.root, this.wave.spray);
+    this.props = q.props ? new Props(course, q.edgeLines) : null;
+    if (this.props) this.root.add(this.props.group);
     this.root.add(this.sky.mesh, this.clouds.mesh, this.water.mesh, this.shore, this.world.group, this.blobs.mesh, this.character.root, this.creatures.group, this.objects.group);
     this.lastReachLevel = -1;
     this.rig.reduceMotion = this.reduceMotion;
@@ -562,6 +566,7 @@ export class GameRenderer {
     const hookTag = f.guides.hookTag;
     this.world.update({ time: t, dt, targetId: !swinging && !splashed && player.target ? player.target.id : hookTag ? hookTag.anchorId : -1, danger: this.danger, player: player.pos, shopArrow: this.shopArrow, reach: this.reach });
     this.objects.update(t, dt, sim, sim.time, this.particles, player.pos);
+    this.props?.update(dt, player.pos, this.particles);
     this.wave.update(dt, wave, player.pos.x, this.camera.quaternion, this.particles, WAVE.warning);
 
     // Guides and the predicted landing ring.

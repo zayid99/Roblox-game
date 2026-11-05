@@ -151,7 +151,7 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
     input.jumpHeld = botHold;
   };
 
-  const moving = shot === 'swing' || shot === 'guides' ? auto : false;
+  const moving = shot === 'swing' ? auto : false;
   let acc = 0;
   let time = 0;
   let last = performance.now();
