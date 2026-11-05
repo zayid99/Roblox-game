@@ -120,7 +120,7 @@ export class LockerTab {
   constructor(private readonly env: PanelEnv, well: HTMLElement, _head: HTMLElement) {
     const wrap = el('div', 'locker');
     const prev = el('div', 'lk-prev');
-    const size = env.layout() === 'portrait' ? 180 : 240;
+    const size = env.layout() === 'desktop' ? 240 : 170;
     prev.innerHTML = porthole('<canvas></canvas>', size, 'lk-ph') + `<div class="lk-name t-stroke"></div>`;
     this.canvas = prev.querySelector('canvas') as HTMLCanvasElement;
     const dpr = Math.min(2, window.devicePixelRatio || 1);

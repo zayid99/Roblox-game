@@ -155,7 +155,14 @@
 .wb-g { width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 14px; }
 
 /* ======== Phone layouts ======== */
-[data-layout="landscape"] .panel-layer { padding: 34px calc(var(--sr) + 24px) 10px calc(var(--sl) + 8px); }
+[data-layout="landscape"] .panel-layer { padding: 56px calc(var(--sr) + 24px) 10px calc(var(--sl) + 8px); }
+[data-layout="landscape"] .gf-claim { display: none; }
+[data-layout="landscape"] .gf.st-ready { cursor: pointer; box-shadow: inset 0 -5px 0 var(--card-shade), 0 4px 0 var(--ink), 0 0 0 3px var(--grass); }
+[data-layout="landscape"] .wb-sub, [data-layout="landscape"] .wb-cash { display: none; }
+[data-layout="landscape"] .wb-right { flex-direction: row; }
+[data-layout="landscape"] .wb-gifts { flex-direction: column; }
+[data-layout="portrait"] .st-row { flex-wrap: wrap; }
+[data-layout="portrait"] .st-row .seg { margin-left: 0; width: 100%; justify-content: space-between; }
 [data-layout="landscape"] .panel { width: min(760px, 100%); padding: 40px 16px 14px; }
 [data-layout="landscape"] .ribbon { height: 50px; top: -28px; }
 [data-layout="landscape"] .ribbon .title, [data-layout="portrait"] .ribbon .title { font-size: 28px; --sw: 8px; }
@@ -173,7 +180,7 @@
 [data-layout="landscape"] .card-up .nm, [data-layout="portrait"] .card-up .nm { font-size: 19px; }
 [data-layout="landscape"] .card-up .buy, [data-layout="portrait"] .card-up .buy { width: 128px; height: 50px; font-size: 19px; }
 [data-layout="landscape"] .stat, [data-layout="portrait"] .stat { font-size: 15px; }
-[data-layout="landscape"] .locker { grid-template-columns: 180px 1fr; }
+[data-layout="landscape"] .locker { grid-template-columns: 170px 1fr; }
 [data-layout="landscape"] .lk-grid { grid-template-columns: repeat(3, 108px); }
 [data-layout="landscape"] .rb-head .ic:first-child { width: 48px; height: 48px; }
 [data-layout="landscape"] .rb-mult { font-size: 30px; }

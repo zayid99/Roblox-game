@@ -142,6 +142,7 @@ export class FreePanel implements PanelContent {
         (mega ? '<span class="gf-mega">MEGA</span>' : '');
       cell.appendChild(box);
       if (g.state === 'ready') {
+        pressable(box, () => this.claimGift(i, box, box));
         const b = el('button', 'btn btn--grass btn--s gf-claim', '<span class="label">CLAIM</span>');
         pressable(b, () => this.claimGift(i, box, b));
         cell.appendChild(b);
