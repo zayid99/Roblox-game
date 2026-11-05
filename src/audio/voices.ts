@@ -32,6 +32,16 @@ const STEPS = [0, 3, 5, 7, 10, 12, 15];
 /** Makeup gain for the narrow formant filters, measured so a chirp peaks near .10. */
 const MAKEUP = 2.6;
 const PEAK = 0.1;
+/**
+ * Per-species loudness trim (dB), measured from offline renders (K-weighted 100 ms RMS) so every species sits
+ * about 2 dB under the calm music's p90 instead of spreading over 14 dB (narrow formants vs. pitch).
+ */
+const TRIM_DB: Record<string, number> = {
+  toastopus: 5.4, pickle_puff: 3.8, soggy_sock: -3.1, crab_dj: 8, boba_turtle: -4.9, sir_shrimp: -4.5,
+  banana_shark: 7.5, disco_clam: 4.2, waffle_walrus: 3.8, burger_whale: -3.5, cactus_jelly: -3.7, ninja_narwhal: -2.3,
+  king_krill: -4.5, lava_lobster: -1.8, astro_otter: 1.1, thunder_tuna: -4.3, ghost_galleon: -2.3, pizza_kraken: 3.4,
+  big_cheese: -2.3, cosmic_sunfish: -4.4, captain_splash: -1.8,
+};
 
 export function speciesPitch(speciesId: string): { f0: number; plan: BodyPlan } | null {
   const i = SPECIES.findIndex((s) => s.id === speciesId);
@@ -56,7 +66,7 @@ export function creatureVoice(e: Engine, dest: AudioNode, speciesId: string, kin
       return [lo, hi] as [number, number];
     });
   }
-  const peak = PEAK * (kind === 'tap' ? 0.8 : 1);
+  const peak = PEAK * (kind === 'tap' ? 0.8 : 1) * Math.pow(10, (TRIM_DB[speciesId] ?? 0) / 20);
   const gap = 0.025;
   const total = syl.length * (p.len + gap);
 

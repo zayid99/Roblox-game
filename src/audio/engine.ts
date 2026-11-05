@@ -13,7 +13,7 @@ export const MIX = {
   music: 0.25,
   musicSurge: 0.3,
   sfx: 0.9,
-  ui: 0.2,
+  ui: 0.5,
   amb: 0.18,
 } as const;
 

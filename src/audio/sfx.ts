@@ -389,27 +389,27 @@ export class SfxBank {
       this.noise(t + k * 0.045, { type: 'bandpass', f0: 1800, q: 0.8, dur: 0.05, peak: v, attack: 0.001, tau: 0.015 });
     }
     const tc = t + 0.42;
-    I.crash(e, this.out, tc, 0.45);
+    I.crash(e, this.out, tc, 0.3);
     if (rar <= 2) {
-      [65, 69, 72].forEach((m) => this.mar(tc, m + 12, 0.12));
+      [65, 69, 72].forEach((m) => this.mar(tc, m + 12, 0.08));
     } else {
-      [65, 69, 72, 77].forEach((m, k) => this.pan(tc + k * 0.012, m + 12, 0.14));
-      [89, 93, 96].forEach((m, k) => this.glock(tc + 0.05 + k * 0.05, m, 0.06));
+      [65, 69, 72, 77].forEach((m, k) => this.pan(tc + k * 0.012, m + 12, 0.09));
+      [89, 93, 96].forEach((m, k) => this.glock(tc + 0.05 + k * 0.05, m, 0.04));
     }
-    if (rar >= 5) this.tone(tc, { type: 'sine', f0: 80, f1: 40, glide: 0.4, dur: 0.45, peak: 0.22 });
+    if (rar >= 5) this.tone(tc, { type: 'sine', f0: 80, f1: 40, glide: 0.4, dur: 0.45, peak: 0.15 });
   }
 
   private rebirth(t: number): void {
     const e = this.e;
-    this.swell(t, 'white', 'bandpass', 400, 5000, 2, 1.2, 0.15);
+    this.swell(t, 'white', 'bandpass', 400, 5000, 2, 1.2, 0.1);
     const tc = t + 1.2;
-    I.crash(e, this.out, tc, 1.2);
+    I.crash(e, this.out, tc, 0.6);
     const tr = this.transpose;
-    [65, 69, 72, 77].forEach((m) => this.pan(tc, m, 0.1));
-    [60, 65, 69, 72].forEach((m) => this.mar(tc, m + 12, 0.06));
-    I.strum(e, this.out, tc, [60, 65, 69, 72].map((m) => mtof(m + tr)), 0.12, 'down', 0.6, 0);
-    I.bass(e, this.out, tc, mtof(41 + tr), 0.35, 0.8);
-    [77, 81, 84, 89, 93, 96].forEach((m, k) => this.glock(tc + 0.08 + k * 0.06, m, 0.06));
+    [65, 69, 72, 77].forEach((m) => this.pan(tc, m, 0.06));
+    [60, 65, 69, 72].forEach((m) => this.mar(tc, m + 12, 0.04));
+    I.strum(e, this.out, tc, [60, 65, 69, 72].map((m) => mtof(m + tr)), 0.07, 'down', 0.6, 0);
+    I.bass(e, this.out, tc, mtof(41 + tr), 0.2, 0.8);
+    [77, 81, 84, 89, 93, 96].forEach((m, k) => this.glock(tc + 0.08 + k * 0.06, m, 0.04));
   }
 
   // ------------------------------------------------------------ movement sounds (driven by AudioFrame)
