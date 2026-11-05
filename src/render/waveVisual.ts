@@ -1,5 +1,4 @@
 import {
-  AdditiveBlending,
   BufferGeometry,
   CanvasTexture,
   DoubleSide,
@@ -108,7 +107,8 @@ export function waveMaterial(): ShaderMaterial {
         vec3 N = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
         vec3 V = normalize(cameraPosition - vWorld);
         if (dot(N, V) < 0.0) N = -N;
-        vec3 col = mix(deep, mid, smoothstep(-0.05, 0.7, vH));
+        vec3 col = mix(deep, mid, smoothstep(0.0, 0.95, vH));
+        col *= 0.93 + 0.07 * sin(vWorld.x * 0.45 + vH * 14.0);
         col = mix(col, foam, smoothstep(0.84, 0.97, vH) * step(0.3, vProf));
         col *= 0.78 + 0.32 * max(dot(N, uSun), 0.0);
         float rim = pow(1.0 - abs(dot(N, V)), 2.0);
@@ -117,7 +117,7 @@ export function waveMaterial(): ShaderMaterial {
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #ifdef USE_FOG
-          float fogFactor = smoothstep(fogNear, fogFar, vFogDepth) * 0.7;
+          float fogFactor = smoothstep(fogNear, fogFar * 1.6, vFogDepth) * 0.45;
           gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
         #endif
       }`,
@@ -146,6 +146,21 @@ function sprayTexture(): CanvasTexture {
 }
 
 const SPRAY_MAX = 160;
+
+/** Soft foam puffs: normal blending, per-instance alpha in instanceColor.r and golden tint in .g. */
+function sprayMaterial(): MeshBasicMaterial {
+  const m = new MeshBasicMaterial({ map: sprayTexture(), transparent: true, depthWrite: false, toneMapped: false });
+  m.onBeforeCompile = (s) => {
+    s.fragmentShader = s.fragmentShader.replace(
+      '#include <color_fragment>',
+      `#ifdef USE_INSTANCING_COLOR
+        diffuseColor.a *= vColor.r;
+        diffuseColor.rgb *= mix(vec3(1.0), vec3(1.0, 0.9, 0.62), vColor.g);
+      #endif`,
+    );
+  };
+  return m;
+}
 const m4 = new Matrix4();
 const v3 = new Vector3();
 const s3 = new Vector3();
@@ -159,7 +174,7 @@ export class Spray {
   constructor(parent: Object3D) {
     this.mesh = new InstancedMesh(
       new PlaneGeometry(1, 1),
-      new MeshBasicMaterial({ map: sprayTexture(), transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false }),
+      sprayMaterial(),
       SPRAY_MAX,
     );
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -205,8 +220,8 @@ export class Spray {
       s3.setScalar(size * (0.6 + k * 0.9));
       m4.compose(v3.set(d[o], d[o + 1], d[o + 2]), camQ, s3);
       this.mesh.setMatrixAt(i, m4);
-      const a = (1 - k) * 0.75;
-      this.mesh.instanceColor!.setXYZ(i, a, a * (1 - 0.15 * tint), a * (1 - 0.6 * tint));
+      const a = Math.min(1, k * 6) * (1 - k) * 0.6;
+      this.mesh.instanceColor!.setXYZ(i, a, tint, 0);
       i++;
     }
     this.mesh.count = this.n;
@@ -286,8 +301,8 @@ export class WaveVisual {
       while (this.sprayT > 0.025) {
         this.sprayT -= 0.025;
         const x = playerX + (Math.random() - 0.5) * 120;
-        this.spray.emit(x, crestY - 0.5, wave.frontZ + 2.5, (Math.random() - 0.5) * 2, 3 + Math.random() * 4, 4 + Math.random() * 6, 3 + Math.random() * 2.5, 0.8 + Math.random() * 0.5);
-        if (this.big) this.spray.emit(x + 5, crestY + 1.2, wave.frontZ + 1, 0, 5 + Math.random() * 3, 3, 4 + Math.random() * 2, 0.9);
+        this.spray.emit(x, crestY - 1, wave.frontZ + 2.5, (Math.random() - 0.5) * 2, 1 + Math.random() * 2, 4 + Math.random() * 4, 4 + Math.random() * 3, 0.6 + Math.random() * 0.4);
+        if (this.big) this.spray.emit(x + 5, crestY + 0.5, wave.frontZ + 1, 0, 3 + Math.random() * 2, 3, 3 + Math.random() * 1.5, 0.7);
         if (golden && Math.random() < 0.4) particles.emit(x, crestY, wave.frontZ + 2, (Math.random() - 0.5) * 3, 3 + Math.random() * 3, 4, '#FFE27A', 0.4, 0.9, 6, true);
       }
     } else {

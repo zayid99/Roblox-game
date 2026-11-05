@@ -167,7 +167,7 @@ export function creatureMaterial(mutation: number): CreatureMaterial {
         '#include <color_fragment>',
         `#include <color_fragment>
         #if MUT == 1
-          { vec3 vn = normalize(vNormal); diffuseColor.rgb *= texture2D(uMatcap, vn.xy * 0.5 + 0.5).rgb * 1.55; }
+          { vec3 vn = normalize(vNormal); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.8, 0.28), 0.6) * texture2D(uMatcap, vn.xy * 0.5 + 0.5).rgb * 1.45; }
         #elif MUT == 2
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.96, 1.0), 0.4);
         #elif MUT == 3

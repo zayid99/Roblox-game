@@ -56,7 +56,7 @@ function chevronShape(): ShapeGeometry {
   sh.lineTo(0, 0.5);
   sh.lineTo(-0.45, 0.05);
   sh.closePath();
-  return new ShapeGeometry(sh).rotateX(-Math.PI / 2);
+  return new ShapeGeometry(sh).scale(1.7, 1.7, 1).rotateX(-Math.PI / 2);
 }
 
 function dashedRingTexture(): CanvasTexture {
@@ -102,7 +102,7 @@ export class Guides {
     this.arrowMats.set('#FFC92E', body);
     this.arrow.visible = false;
 
-    this.trail = new InstancedMesh(chevronShape(), new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, side: DoubleSide }), MAX_TRAIL);
+    this.trail = new InstancedMesh(chevronShape(), new MeshBasicMaterial({ color: '#FFFFFF', depthWrite: false, toneMapped: false, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), MAX_TRAIL);
     this.trail.instanceMatrix.setUsage(DynamicDrawUsage);
     this.trail.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX_TRAIL * 3), 3);
     this.trail.frustumCulled = false;
@@ -233,12 +233,12 @@ export class Guides {
       for (let i = 0; i < this.trailCount; i++) {
         const p = this.trailPts[i];
         const d = this.trailDirs[i];
-        const yaw = Math.atan2(d.x, d.z);
+        const yaw = Math.atan2(-d.x, -d.z);
         m.makeRotationY(yaw);
         m.setPosition(v.copy(p).setY(p.y + 0.15));
         this.trail.setMatrixAt(i, m);
         const b = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(((i - time * 2) / 5) * Math.PI * 2), 2);
-        this.trail.setColorAt(i, c.setRGB(b, b * 0.95, b * 0.6));
+        this.trail.setColorAt(i, c.setRGB(1, 0.62 + 0.36 * b, 0.05 + 0.6 * b, SRGBColorSpace));
       }
       this.trail.count = this.trailCount;
       this.trail.instanceMatrix.needsUpdate = true;

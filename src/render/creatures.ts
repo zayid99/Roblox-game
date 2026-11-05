@@ -462,7 +462,7 @@ export class CreatureVisuals {
       if (dist > 80) continue;
       // Glow disc, rare beam, legendary ring.
       const rc = rarityColors[w.rarity];
-      tmpS.setScalar(2.4 * w.scale);
+      tmpS.setScalar(1.9 * w.scale);
       tmpS.y = 1;
       tmpQ.identity();
       tmpM.compose(tmpV.set(w.base.x, w.base.y + 0.04, w.base.z), tmpQ, tmpS);
@@ -476,7 +476,7 @@ export class CreatureVisuals {
       if (w.rarity >= 4) {
         const k = ((t + w.yaw) % 1.2) / 1.2;
         tmpQ.identity();
-        tmpS.setScalar(w.scale * (0.9 + 1.6 * k));
+        tmpS.setScalar(Math.min(1.6, w.scale) * (0.8 + 1.2 * k));
         tmpM.compose(tmpV.set(w.base.x, w.base.y + 0.06, w.base.z), tmpQ, tmpS);
         this.rings.add(tmpM, tmpC.copy(rc).multiplyScalar(1 - k));
       }

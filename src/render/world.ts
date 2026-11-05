@@ -358,14 +358,18 @@ export class World {
     for (let z = home.min.z + 0.8; z < course.homeSpawn.z + 2; z += 1.6) decor.box(0, HOME_TOP + 0.03, z, 2.2, 0.06, 1.1, '#F3E2B3', { noOutline: true });
     for (const [x, z] of [[-14.5, 4.5], [14.5, 1.5], [-15, 29], [15, 28.5], [-14.5, 17], [15, 20]]) palm(palms, x, HOME_TOP, z + home.min.z - 2, rng, sway);
 
-    // HOME arch over the path.
-    const archZ = HOME_FRONT_Z + 3.2;
+    // HOME gate: two posts and a crossbar with a board, at the front-left corner facing the sea and the spawn.
+    // (Kept off the path itself so it never hides the first hook from the spawn or swing camera.)
+    const gate = new Matrix4().makeRotationY(0.5).setPosition(-9.5, 0, HOME_FRONT_Z + 3.2);
+    const gbox = (x: number, y: number, z: number, sx: number, sy: number, sz: number, c: string) =>
+      decor.box(0, 0, 0, sx, sy, sz, c, { matrix: new Matrix4().copy(gate).multiply(new Matrix4().makeTranslation(x, y, z)) });
     for (const sx of [-1, 1]) {
-      decor.box(sx * 2.3, HOME_TOP + 2.1, archZ, 0.45, 4.2, 0.45, '#8A5A28', { ao: HOME_TOP });
-      decor.box(sx * 2.3, HOME_TOP + 0.2, archZ, 0.7, 0.4, 0.7, '#6B4423');
+      gbox(sx * 2.4, HOME_TOP + 2.2, 0, 0.45, 4.4, 0.45, '#8A5A28');
+      gbox(sx * 2.4, HOME_TOP + 0.2, 0, 0.75, 0.4, 0.75, '#6B4423');
+      gbox(sx * 2.4, HOME_TOP + 4.45, 0, 0.6, 0.2, 0.6, '#6B4423');
     }
-    decor.box(0, HOME_TOP + 4.35, archZ, 5.4, 0.35, 0.5, '#6B4423');
-    signs.board(new Matrix4().makeTranslation(0, HOME_TOP + 5.25, archZ), 4.2, 1.68, [{ text: 'HOME', size: 92, color: '#FFE66D' }]);
+    gbox(0, HOME_TOP + 4.55, 0, 5.6, 0.35, 0.5, '#6B4423');
+    signs.board(new Matrix4().copy(gate).multiply(new Matrix4().makeTranslation(0, HOME_TOP + 5.5, 0)), 4.2, 1.68, [{ text: 'HOME', size: 92, color: '#FFE66D' }]);
 
     // Shop stall: striped awning, counter and a SHOP board.
     const shopX = 11.5;

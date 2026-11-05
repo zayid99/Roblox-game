@@ -21,6 +21,7 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
   const quality = (params.get('q') ?? 'auto') as QualitySetting;
   const auto = params.get('auto') !== '0';
   const reduceMotion = params.get('rm') === '1';
+  const waveGap = Number(params.get('gap') ?? 40);
 
   root.innerHTML = '';
   root.style.cssText = 'position:fixed;inset:0;overflow:hidden;background:#000';
@@ -42,9 +43,10 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
   if (shot === 'home' || shot === 'wave' || shot === 'warning') {
     for (let i = 0; i < state.base.length; i++) state.base[i] = { speciesId: SPECIES[(i * 4 + 2) % SPECIES.length].id, mutation: i === 2 ? 1 : i === 4 ? 2 : 0 };
   }
-  if (shot === 'home' || shot === 'creatures') state.carried = [{ speciesId: 'crab_dj', mutation: 0 }, { speciesId: 'pickle_puff', mutation: 3 }];
+  if (shot === 'home' || shot === 'creatures' || shot === 'player') state.carried = [{ speciesId: 'crab_dj', mutation: 0 }, { speciesId: 'pickle_puff', mutation: 3 }];
 
   const sim = new GameSim(state, { rngSeed: 7 });
+  injectGameplayObjects(sim);
   const gfx = new GameRenderer(canvas, { requestTimeScale: timeScale.request });
   const resize = () => gfx.resize(window.innerWidth, window.innerHeight, window.innerWidth / window.innerHeight < 0.8 ? 'portrait' : window.innerHeight < 500 ? 'landscape' : 'desktop');
   resize();
@@ -62,10 +64,18 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
   if (shot === 'home') {
     sim.player.reset(new Vector3(0, HOME_TOP, HOME_FRONT_Z + 9), 1);
     gfx.snapBehind(0.35, 1);
+  } else if (shot === 'player') {
+    sim.player.reset(home);
+    gfx.snapBehind(0.3, 1);
+    gfx.look(0, 40, -600, -10);
   } else if (shot === 'zone3') {
     sim.player.reset(islandOf(2).checkpoint);
   } else if (shot === 'volcano') {
     sim.player.reset(islandOf(5, 0).checkpoint);
+  } else if (shot === 'buoy') {
+    const gap = course.gaps.find((g) => g.zone === 1)!;
+    sim.player.reset(gap.from.checkpoint);
+    gfx.snapBehind(0.4, -1);
   } else if (shot === 'creatures') {
     const isl = islandOf(0, 0);
     sim.player.reset(isl.checkpoint);
@@ -170,13 +180,14 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
         input.jumpPressed = jumpPressed;
         jumpPressed = false;
       }
+      if (shot === 'wave' && sim.wave.phase === 'surge') sim.wave.frontZ = Math.min(sim.player.pos.z, 2) - waveGap - sim.wave.speed * FIXED;
       sim.step(FIXED, input);
       for (const e of sim.events) gfx.onSimEvent(e);
       acc -= FIXED;
       steps++;
     }
     if (steps === 12) acc = 0;
-    if (shot === 'wave' && sim.wave.phase === 'surge' && sim.wave.frontZ < sim.player.pos.z - 55) sim.wave.frontZ = sim.player.pos.z - 55;
+    if (shot === 'wave' && sim.wave.phase === 'surge') sim.wave.frontZ = Math.min(sim.player.pos.z, 2) - waveGap;
     if (!gfx.shouldRender(now)) return;
     const f: RenderFrame = { realDt, simDt, time, sim, state, cosmetics: { rope: params.get('rope') ?? 'rope_hemp', trail: 'trail_none' }, guides, reduceMotion, beatPhase: NaN };
     gfx.render(f);
@@ -184,4 +195,43 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
     hud.textContent = `render sandbox  shot=${shot}  tier=${gfx.tier}\ncalls ${s.calls}  tris ${(s.tris / 1000).toFixed(1)}k  ${s.ms.toFixed(1)} ms  dpr ${s.dpr}\nmode ${sim.player.mode}  wave ${sim.wave.phase} ${sim.wave.timer.toFixed(1)}`;
   };
   requestAnimationFrame(frame);
+}
+
+/**
+ * Until the features team's course lands, fake its §9.0 objects (buoys in zones 2–5, drift on the last hook of
+ * zones 3–7, geysers on Volcano Bay islands) so the sandbox can show them. No-op once the sim has them.
+ */
+function injectGameplayObjects(sim: GameSim): void {
+  const c = sim.course as unknown as { buoys?: unknown[]; geysers?: unknown[] };
+  if (c.buoys) return;
+  {
+    let id = 9000;
+    c.buoys = sim.course.gaps
+      .filter((g) => g.zone >= 1 && g.zone <= 4)
+      .map((g) => {
+        const a = g.from.solid;
+        const b = g.to.solid;
+        return { id: id++, pos: new Vector3(((a.min.x + a.max.x) / 2 + (b.min.x + b.max.x) / 2) / 2 + 1, 1.2, (a.min.z + b.max.z) / 2), radius: 1.4 };
+      });
+    for (let z = 2; z <= 6; z++) {
+      const gaps = sim.course.gaps.filter((g) => g.zone === z);
+      const g = gaps[gaps.length - 1];
+      const a = g?.anchors[Math.floor(g.anchors.length / 2)] as unknown as { pos: Vector3; drift?: unknown } | undefined;
+      if (a) a.drift = { baseX: a.pos.x, amp: 2.5, period: 4, phase: z };
+    }
+  }
+  if (!c.geysers) {
+    let id = 9500;
+    c.geysers = sim.course.islands.filter((i) => i.zone === 5).map((i, k) => ({ id: id++, pos: new Vector3(i.solid.max.x - 2.5, i.solid.max.y, i.checkpoint.z + 1.5), radius: 1.5, phase: k * 2.3 }));
+  }
+  // Drive the fake drift so rails and hooks move together.
+  const drifting = sim.course.anchors.filter((a) => (a as unknown as { drift?: unknown }).drift);
+  const step = sim.step.bind(sim);
+  sim.step = (dt, input) => {
+    step(dt, input);
+    for (const a of drifting) {
+      const d = (a as unknown as { drift: { baseX: number; amp: number; period: number; phase: number } }).drift;
+      a.pos.x = d.baseX + d.amp * Math.sin((2 * Math.PI * sim.time) / d.period + d.phase);
+    }
+  };
 }

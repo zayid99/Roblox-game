@@ -70,6 +70,7 @@ export class Ribbon {
     // Fade in above 12 m/s over 150 ms, out below 9 m/s over 250 ms.
     if (enabled && speed > 12) this.fade = Math.min(1, this.fade + dt / 0.15);
     else if (!enabled || speed < 9) this.fade = Math.max(0, this.fade - dt / 0.25);
+    if (!enabled) this.count = 0;
     const last = this.samples[(this.head + N - 1) % N];
     if (this.count === 0 || last.distanceToSquared(feet) >= 0.15 * 0.15) {
       this.samples[this.head].copy(feet);
