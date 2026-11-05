@@ -17,12 +17,63 @@ export interface Solid extends AABB {
   zone: number;
 }
 
+export interface AnchorDrift {
+  baseX: number;
+  /** Metres either side of baseX. */
+  amp: number;
+  /** Seconds per full cycle. */
+  period: number;
+  /** Phase offset in radians. */
+  phase: number;
+}
+
 export interface Anchor {
   id: number;
   zone: number;
+  /** Current position. For drifting hooks the sim keeps x up to date (anchorPosAt gives any time). */
   pos: Vector3;
   /** Rope Reach needed before this hook can be grabbed (zone gate). */
   minReach: number;
+  /** Drifting Hooks (§9.0, P1): pos.x = baseX + amp × sin(2π t / period + phase). */
+  drift?: AnchorDrift;
+}
+
+/** Bounce Buoy (§9.0): a static collider in the sea under the middle of a gap. pos is the top centre. */
+export interface Buoy {
+  id: number;
+  zone: number;
+  pos: Vector3;
+  radius: number;
+}
+
+/** Volcano geyser vent (§9.0, P1). pos is the vent centre on the island top. phase is in seconds. */
+export interface Geyser {
+  id: number;
+  zone: number;
+  pos: Vector3;
+  radius: number;
+  phase: number;
+}
+
+export type GeyserState = 'idle' | 'warning' | 'erupting';
+
+export const GEYSER = { idle: 4, warning: 1, erupt: 2, radius: 1.5 };
+export const GEYSER_PERIOD = GEYSER.idle + GEYSER.warning + GEYSER.erupt;
+export const DRIFT = { amp: 2.5, period: 4 };
+
+/** Where an anchor is at sim time t (drifting hooks move along x). */
+export function anchorPosAt(a: Anchor, t: number, out: Vector3): Vector3 {
+  out.copy(a.pos);
+  if (a.drift) out.x = a.drift.baseX + a.drift.amp * Math.sin((2 * Math.PI * t) / a.drift.period + a.drift.phase);
+  return out;
+}
+
+/** Geyser cycle at sim time t: 4 s idle, 1 s warning, 2 s eruption. */
+export function geyserStateAt(g: Geyser, t: number): GeyserState {
+  const c = (((t + g.phase) % GEYSER_PERIOD) + GEYSER_PERIOD) % GEYSER_PERIOD;
+  if (c < GEYSER.idle) return 'idle';
+  if (c < GEYSER.idle + GEYSER.warning) return 'warning';
+  return 'erupting';
 }
 
 export interface Island {
@@ -85,6 +136,12 @@ export interface Course {
   pedestals: Vector3[];
   /** Far end of the course (most negative z). */
   endZ: number;
+  /** Where new sessions and the FTUE spawn (§7.2): 4 m from the home front edge. */
+  ftueSpawn: Vector3;
+  /** Walking into this opens the Shop (the stall beside the home path, G8). */
+  shopZone: AABB;
+  buoys: Buoy[];
+  geysers: Geyser[];
 }
 
 export const LIGHTHOUSE_TOP = 14;
@@ -246,6 +303,39 @@ export function generateCourse(seed = 20261105): Course {
     zones.push({ index: zi, def, startZ, endZ: cursorZ });
   });
 
+  // Features use their own RNG stream so the islands and hooks stay exactly as before.
+  const frng = new Rng((seed ^ 0x5eed_b0e7) >>> 0);
+  const buoys: Buoy[] = [];
+  for (const gap of gaps) {
+    if (gap.zone < 1 || gap.zone > 4) continue;
+    const z = (gap.from.solid.min.z + gap.to.solid.max.z) / 2;
+    const x = (anchorMidX(gap) + (frng.chance(0.5) ? 2 : -2));
+    buoys.push({ id: nextId++, zone: gap.zone, pos: new Vector3(x, 1.2, z), radius: 1.4 });
+  }
+
+  // Drifting hooks (P1): zones 3–7 (index 2..6), the last gap of each zone, the middle anchor.
+  for (let zi = 2; zi < ZONES.length; zi++) {
+    const zoneGaps = gaps.filter((g) => g.zone === zi);
+    const last = zoneGaps[zoneGaps.length - 1];
+    if (!last) continue;
+    const a = last.anchors[Math.floor((last.anchors.length - 1) / 2)];
+    a.drift = { baseX: a.pos.x, amp: DRIFT.amp, period: DRIFT.period, phase: frng.range(0, Math.PI * 2) };
+  }
+
+  // Volcano geysers (P1): one vent on each Volcano Bay island top, clear of the lighthouse.
+  const geysers: Geyser[] = [];
+  const volcano = ZONES.findIndex((z) => z.name === 'Volcano Bay');
+  for (const island of islands) {
+    if (island.zone !== volcano) continue;
+    const s = island.solid;
+    const lh = lighthouses.find((l) => l.tower.min.z >= s.min.z && l.tower.max.z <= s.max.z);
+    const cx = (s.min.x + s.max.x) / 2;
+    // Put the vent on the side away from the lighthouse (if any), near the back edge.
+    const side = lh ? (lh.tower.min.x + lh.tower.max.x) / 2 > cx ? -1 : 1 : 1;
+    const pos = new Vector3(cx + side * Math.min(2.5, (s.max.x - s.min.x) / 2 - 2), s.max.y, s.min.z + 2.2);
+    geysers.push({ id: nextId++, zone: island.zone, pos, radius: GEYSER.radius, phase: frng.range(0, GEYSER_PERIOD) });
+  }
+
   return {
     seed,
     solids,
@@ -260,7 +350,17 @@ export function generateCourse(seed = 20261105): Course {
     homeSpawn,
     pedestals,
     endZ: cursorZ,
+    ftueSpawn: new Vector3(0, HOME_TOP, HOME_FRONT_Z + 4),
+    shopZone: { min: new Vector3(9, HOME_TOP, HOME_FRONT_Z + 3), max: new Vector3(13, HOME_TOP + 3, HOME_FRONT_Z + 7) },
+    buoys,
+    geysers,
   };
+}
+
+function anchorMidX(gap: Gap): number {
+  let x = 0;
+  for (const a of gap.anchors) x += a.pos.x;
+  return x / gap.anchors.length;
 }
 
 /** Zone index at a z position: -1 on the home side, otherwise 0..zones-1. */

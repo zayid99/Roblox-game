@@ -49,7 +49,30 @@ export const WAVE = {
   /** How far behind the front the wall still splashes you. */
   thickness: 7,
   goldenEvery: 4,
+  /** Every 5th wave is a Big Wave: faster and higher (§9.0). */
+  bigEvery: 5,
+  bigSpeed: 52,
+  bigCrest: 12,
 };
+
+export const COMBO = {
+  /** Chain timer (s); refills on grab and release, drains only on the ground on a course island. */
+  chainTime: 8,
+  /** Horizontal velocity multiplier for a Perfect release. */
+  perfectBoost: 1.04,
+  /** Perfect window, degrees from straight down, past the anchor. */
+  perfectMin: 28,
+  perfectMax: 58,
+  goodMin: 10,
+  goodMax: 80,
+  /** Delivery bonus = income × multiplier × this × chainMult (× closeCall). */
+  deliverySeconds: 10,
+  closeCallMult: 1.25,
+  closeCallSeconds: 3,
+};
+
+/** Seconds between the 'sea' event and the 'respawn' event (§9.0). */
+export const SEA_RESPAWN_DELAY = 0.6;
 
 export const ECONOMY = {
   offlineCapSeconds: 60 * 60,

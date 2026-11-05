@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { PHYS, SEA_LEVEL } from './config';
-import type { Anchor, Pad, Solid } from './course';
+import { anchorPosAt, geyserStateAt, type Anchor, type Buoy, type Geyser, type Pad, type Solid } from './course';
 import { moveAndCollide, type SweepResult } from './physics';
 
 export interface PlayerStats {
@@ -26,7 +26,22 @@ export interface PlayerWorld {
   solids: readonly Solid[];
   anchors: readonly Anchor[];
   pads: readonly Pad[];
+  /** Bounce Buoys (§9.0). Optional so bare test worlds still work. */
+  buoys?: readonly Buoy[];
+  /** Volcano geysers (§9.0, P1). */
+  geysers?: readonly Geyser[];
 }
+
+/** Recorded by release() before the boost, so the sim can rate the release (§9.4). theta is in degrees. */
+export interface ReleaseRecord {
+  anchorId: number;
+  anchorPos: Vector3;
+  theta: number;
+  vel: Vector3;
+}
+
+export const BUOY = { bounceVel: 19, keepHorizontal: 0.8, reflect: 0.9 };
+export const GEYSER_LAUNCH = { vel: 26, time: 0.4, surface: 1 };
 
 export const NO_INPUT: PlayerInput = { moveX: 0, moveZ: 0, jumpHeld: false, jumpPressed: false };
 
@@ -84,6 +99,9 @@ export function nearbyLockedAnchor(grip: Vector3, anchors: readonly Anchor[], re
 }
 
 const tmpGrip = new Vector3();
+const tmpAnchor = new Vector3();
+const tmpFwd = new Vector3();
+const RAD = 180 / Math.PI;
 
 export class PlayerSim {
   readonly pos = new Vector3();
@@ -99,6 +117,18 @@ export class PlayerSim {
   /** Last solid the player stood on. */
   groundSolid: Solid | null = null;
   readonly events: PlayerEvent[] = [];
+  /** Sim time at the end of the last step (drives drifting hooks and geysers). */
+  time = 0;
+  /** The last real release, recorded before the boost (null until the first one). */
+  lastRelease: ReleaseRecord | null = null;
+  /** Pad that launched the player this step (valid when events has 'pad'), else -1. */
+  padId = -1;
+  /** Buoy bounced on this step, else -1. */
+  bouncedOn = -1;
+  /** Geyser that launched the player this step, else -1. */
+  geyserLaunched = -1;
+  /** True on the step a swing ended by landing while still attached (no 'release' event). */
+  landedAttached = false;
 
   private ropeGoal = 0;
   private coyote = 0;
@@ -124,6 +154,79 @@ export class PlayerSim {
     this.sinceRelease = 99;
     this.launchTime = 0;
     this.groundSolid = null;
+    this.padId = -1;
+    this.bouncedOn = -1;
+    this.geyserLaunched = -1;
+    this.landedAttached = false;
+  }
+
+  /** Copies every field (including the private ones) from another player. No allocation. */
+  copyFrom(o: PlayerSim): void {
+    this.pos.copy(o.pos);
+    this.vel.copy(o.vel);
+    this.facing.copy(o.facing);
+    this.mode = o.mode;
+    this.anchor = o.anchor;
+    this.ropeLength = o.ropeLength;
+    this.target = o.target;
+    this.airTime = o.airTime;
+    this.groundSolid = o.groundSolid;
+    this.events.length = 0;
+    for (const e of o.events) this.events.push(e);
+    this.time = o.time;
+    this.lastRelease = o.lastRelease;
+    this.padId = o.padId;
+    this.bouncedOn = o.bouncedOn;
+    this.geyserLaunched = o.geyserLaunched;
+    this.landedAttached = o.landedAttached;
+    this.ropeGoal = o.ropeGoal;
+    this.coyote = o.coyote;
+    this.jumpBuffer = o.jumpBuffer;
+    this.canDoubleJump = o.canDoubleJump;
+    this.lastAnchorId = o.lastAnchorId;
+    this.sinceRelease = o.sinceRelease;
+    this.launchTime = o.launchTime;
+  }
+
+  /** Where the current anchor is right now (drifting hooks move), or null when not attached. */
+  anchorPos(out: Vector3): Vector3 | null {
+    return this.anchor ? anchorPosAt(this.anchor, this.time, out) : null;
+  }
+
+  /**
+   * The forward direction of the current swing (§7.3): horizontal, from the centre of the last solid
+   * stood on toward the anchor. Falls back to -z (the course direction).
+   */
+  swingForward(out: Vector3): Vector3 {
+    out.set(0, 0, -1);
+    const g = this.groundSolid;
+    if (!this.anchor || !g) return out;
+    const a = anchorPosAt(this.anchor, this.time, tmpAnchor);
+    const dx = a.x - (g.min.x + g.max.x) / 2;
+    const dz = a.z - (g.min.z + g.max.z) / 2;
+    const l = Math.hypot(dx, dz);
+    if (l > 1e-6) out.set(dx / l, 0, dz / l);
+    return out;
+  }
+
+  /**
+   * Rope angle (anchor → grip) from straight down, in degrees. Positive when the player is past
+   * the anchor in the forward direction. 0 when not attached.
+   */
+  swingAngle(forward: Vector3): number {
+    if (!this.anchor) return 0;
+    const a = anchorPosAt(this.anchor, this.time, tmpAnchor);
+    const gx = this.pos.x - a.x;
+    const gy = this.pos.y + PHYS.gripHeight - a.y;
+    const gz = this.pos.z - a.z;
+    const fl = Math.hypot(forward.x, forward.z) || 1;
+    const h = (gx * forward.x + gz * forward.z) / fl;
+    return Math.atan2(h, -gy) * RAD;
+  }
+
+  /** The same physics as letting go, but records nothing and pushes no event (for predictions). */
+  forceRelease(stats: PlayerStats): void {
+    this.applyRelease(stats);
   }
 
   gripPos(out: Vector3): Vector3 {
@@ -132,6 +235,11 @@ export class PlayerSim {
 
   step(dt: number, input: PlayerInput, stats: PlayerStats, world: PlayerWorld): void {
     this.events.length = 0;
+    this.padId = -1;
+    this.bouncedOn = -1;
+    this.geyserLaunched = -1;
+    this.landedAttached = false;
+    this.time += dt;
     this.sinceRelease += dt;
     this.jumpBuffer = input.jumpPressed ? PHYS.jumpBuffer : Math.max(0, this.jumpBuffer - dt);
 
@@ -149,6 +257,9 @@ export class PlayerSim {
         break;
       case 'swing':
         this.updateSwing(dt, input, stats);
+        // Letting go hands the rest of the step to air movement, exactly like
+        // forceRelease() followed by a step (so predictRelease matches the real flight).
+        if (this.mode !== 'swing') this.updateMove(dt, input, stats);
         break;
       default:
         this.updateMove(dt, input, stats);
@@ -158,6 +269,8 @@ export class PlayerSim {
     this.integrate(dt, world);
 
     if (this.mode === 'ground') this.checkPads(world.pads);
+    if (world.buoys && this.mode === 'air') this.checkBuoys(world.buoys);
+    if (world.geysers && this.mode !== 'launch' && this.mode !== 'swing') this.checkGeysers(world.geysers);
 
     const hs = Math.hypot(this.vel.x, this.vel.z);
     if (hs > 0.5 && this.mode !== 'launch') this.facing.set(this.vel.x / hs, 0, this.vel.z / hs);
@@ -236,7 +349,7 @@ export class PlayerSim {
   }
 
   private attach(anchor: Anchor): void {
-    const dist = this.gripPos(tmpGrip).distanceTo(anchor.pos);
+    const dist = this.gripPos(tmpGrip).distanceTo(anchorPosAt(anchor, this.time, tmpAnchor));
     this.anchor = anchor;
     this.mode = 'swing';
     this.ropeLength = Math.max(PHYS.ropeMin, dist);
@@ -259,9 +372,10 @@ export class PlayerSim {
 
     // Pump: push along the swing (perpendicular to the rope) in the direction of the stick.
     const grip = this.gripPos(tmpGrip);
-    const rx = anchor.pos.x - grip.x;
-    const ry = anchor.pos.y - grip.y;
-    const rz = anchor.pos.z - grip.z;
+    const ap = anchorPosAt(anchor, this.time, tmpAnchor);
+    const rx = ap.x - grip.x;
+    const ry = ap.y - grip.y;
+    const rz = ap.z - grip.z;
     const rl = Math.hypot(rx, ry, rz) || 1;
     const ux = rx / rl;
     const uy = ry / rl;
@@ -287,6 +401,20 @@ export class PlayerSim {
   }
 
   private release(stats: PlayerStats): void {
+    if (this.anchor) {
+      const ap = anchorPosAt(this.anchor, this.time, new Vector3());
+      this.lastRelease = {
+        anchorId: this.anchor.id,
+        anchorPos: ap,
+        theta: this.swingAngle(this.swingForward(tmpFwd)),
+        vel: this.vel.clone(),
+      };
+    }
+    this.applyRelease(stats);
+    this.events.push('release');
+  }
+
+  private applyRelease(stats: PlayerStats): void {
     const boost = 1 + 0.1 * stats.power;
     this.vel.x *= boost;
     this.vel.z *= boost;
@@ -297,7 +425,6 @@ export class PlayerSim {
     this.mode = 'air';
     this.airTime = 0;
     this.canDoubleJump = true;
-    this.events.push('release');
   }
 
   private integrate(dt: number, world: PlayerWorld): void {
@@ -314,7 +441,7 @@ export class PlayerSim {
       let dz = this.vel.z * h;
 
       if (this.mode === 'swing' && this.anchor) {
-        const a = this.anchor.pos;
+        const a = anchorPosAt(this.anchor, this.time, tmpAnchor);
         const ex = this.pos.x + dx - a.x;
         const ey = this.pos.y + dy + PHYS.gripHeight - a.y;
         const ez = this.pos.z + dz - a.z;
@@ -353,6 +480,7 @@ export class PlayerSim {
         this.lastAnchorId = this.anchor.id;
         this.sinceRelease = 0;
         this.anchor = null;
+        this.landedAttached = true;
       }
       if (this.mode !== 'ground') this.events.push('land');
       this.mode = 'ground';
@@ -379,7 +507,44 @@ export class PlayerSim {
       );
       this.mode = 'launch';
       this.launchTime = t;
+      this.padId = pad.id;
       this.events.push('pad');
+      return;
+    }
+  }
+
+  /** Falling onto a buoy's top bounces you back up (§9.0). The collider is static. */
+  private checkBuoys(buoys: readonly Buoy[]): void {
+    if (this.vel.y >= 0) return;
+    for (const b of buoys) {
+      if (this.pos.y > b.pos.y + 0.05 || this.pos.y < b.pos.y - 1.2) continue;
+      const dx = this.pos.x - b.pos.x;
+      const dz = this.pos.z - b.pos.z;
+      if (dx * dx + dz * dz > b.radius * b.radius) continue;
+      this.pos.y = b.pos.y;
+      this.vel.y = Math.max(BUOY.bounceVel, -this.vel.y * BUOY.reflect);
+      this.vel.x *= BUOY.keepHorizontal;
+      this.vel.z *= BUOY.keepHorizontal;
+      this.mode = 'air';
+      this.airTime = 0;
+      this.canDoubleJump = true;
+      this.bouncedOn = b.id;
+      return;
+    }
+  }
+
+  /** An erupting geyser launches a player standing in (or just above) its vent (§9.0, P1). */
+  private checkGeysers(geysers: readonly Geyser[]): void {
+    for (const g of geysers) {
+      if (Math.abs(this.pos.y - g.pos.y) > GEYSER_LAUNCH.surface) continue;
+      const dx = this.pos.x - g.pos.x;
+      const dz = this.pos.z - g.pos.z;
+      if (dx * dx + dz * dz > g.radius * g.radius) continue;
+      if (geyserStateAt(g, this.time) !== 'erupting') continue;
+      this.vel.y = GEYSER_LAUNCH.vel;
+      this.mode = 'launch';
+      this.launchTime = GEYSER_LAUNCH.time;
+      this.geyserLaunched = g.id;
       return;
     }
   }
