@@ -109,8 +109,25 @@ export function creatureLabel(c: CreatureRef): string {
   return c.mutation > 0 ? `${MUTATIONS[c.mutation].name} ${s.name}` : s.name;
 }
 
+/** Weight of this week's Featured Creature within its rarity roll (§9.0). */
+export const FEATURED_WEIGHT = 2;
+
+/** Picks a species of a rarity with one RNG draw; the featured species (if in the pool) weighs FEATURED_WEIGHT. */
+export function pickSpecies(rarity: number, rng: Rng, featured: string | null = null): Species {
+  const pool = SPECIES.filter((s) => s.rarity === rarity);
+  const fi = featured ? pool.findIndex((s) => s.id === featured) : -1;
+  if (fi < 0) return rng.pick(pool);
+  const total = pool.length - 1 + FEATURED_WEIGHT;
+  let u = rng.next() * total;
+  for (let i = 0; i < pool.length; i++) {
+    u -= i === fi ? FEATURED_WEIGHT : 1;
+    if (u < 0) return pool[i];
+  }
+  return pool[pool.length - 1];
+}
+
 /** Rolls a creature for a zone. Golden waves push rarities and mutations up. */
-export function rollCreature(zoneRarity: number, golden: boolean, rng: Rng): CreatureRef {
+export function rollCreature(zoneRarity: number, golden: boolean, rng: Rng, featured: string | null = null): CreatureRef {
   let rarity = zoneRarity;
   const u = rng.next();
   const up = golden ? 0.3 : 0.06;
@@ -118,8 +135,7 @@ export function rollCreature(zoneRarity: number, golden: boolean, rng: Rng): Cre
   if (u < up && rarity < RARITIES.length - 1) rarity++;
   else if (u < up + down) rarity--;
 
-  const pool = SPECIES.filter((s) => s.rarity === rarity);
-  const species = rng.pick(pool);
+  const species = pickSpecies(rarity, rng, featured);
 
   const m = rng.next();
   const [rainbow, diamond, gold] = golden ? [0.03, 0.1, 0.35] : [0.004, 0.015, 0.05];

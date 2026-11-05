@@ -67,6 +67,41 @@ describe('every gap can be crossed', () => {
     });
   });
 
+  course.gaps.forEach((gap, i) => {
+    it(`gap ${i} (zone ${gap.zone}) with Perfect boosts on`, () => {
+      const stats = {
+        runSpeed: UPGRADES.speed.value(gap.zone),
+        reach: UPGRADES.reach.value(gateLevel(gap.zone)),
+        power: UPGRADES.power.value(0),
+      };
+      expect(crossable(course, gap, stats, { perfectBoost: true })).not.toBeNull();
+    });
+  });
+
+  it('drifting hooks are crossable at every phase', () => {
+    const drifting = course.gaps.filter((g) => g.anchors.some((a) => a.drift));
+    expect(drifting.length).toBe(5);
+    for (const gap of drifting) {
+      const a = gap.anchors.find((x) => x.drift)!;
+      const stats = {
+        runSpeed: UPGRADES.speed.value(gap.zone),
+        reach: UPGRADES.reach.value(gateLevel(gap.zone)),
+        power: UPGRADES.power.value(0),
+      };
+      for (let k = 0; k < 8; k++) {
+        const startTime = (k / 8) * a.drift!.period;
+        expect(crossable(course, gap, stats, { startTime }), `zone ${gap.zone} phase ${k}/8`).not.toBeNull();
+      }
+    }
+  });
+
+  it('every gap of zones 2–5 has a buoy', () => {
+    for (const gap of course.gaps) {
+      const has = course.buoys.some((b) => b.pos.z < gap.from.solid.min.z && b.pos.z > gap.to.solid.max.z);
+      expect(has).toBe(gap.zone >= 1 && gap.zone <= 4);
+    }
+  });
+
   it('cannot swing into a zone before the rope is long enough', () => {
     const gap = course.gaps.find((g) => g.zone === 3)!;
     const stats = { runSpeed: UPGRADES.speed.value(4), reach: UPGRADES.reach.value(gateLevel(3) - 1), power: UPGRADES.power.value(4) };
