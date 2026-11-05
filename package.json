@@ -1,0 +1,23 @@
+{
+  "name": "swing-or-splash",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A Roblox-style rope-swinging obby for CrazyGames: swing out, grab creatures, beat the wave home.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/inline-build.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  }
+}
