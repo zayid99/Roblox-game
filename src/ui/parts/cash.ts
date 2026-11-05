@@ -98,7 +98,7 @@ export class CashPart {
   constructor() {
     this.el = el('div', 'tl');
     this.cashPill = el('div', 'pill pill--cash', `${icon('cash', 58)}${gradText('$0', 't-num num-cash val')}`);
-    this.incomeRow = el('div', 'income-chip', `<span class="chip">${icon('arrow-up', 14)}<span class="inc">+$0/s</span></span><span class="chip chip--gold mult">×1</span>`);
+    this.incomeRow = el('div', 'income-chip hud-hide', `<span class="chip">${icon('arrow-up', 14)}<span class="inc">+$0/s</span></span><span class="chip chip--gold mult">×1</span>`);
     this.pearlPill = el('div', 'pill pill--pearl hud-hide', `${icon('pearl', 42)}${gradText('0', 't-num num-pearl val')}`);
     this.el.append(this.cashPill, this.incomeRow, this.pearlPill);
     this.cashIcon = this.cashPill.querySelector('.ic') as HTMLElement;
@@ -115,6 +115,12 @@ export class CashPart {
     if (income !== this.last.income) {
       this.last.income = income;
       setText(this.incomeTxt, `+${formatIncome(income)}`);
+      // The income chip pops in with the first pedestal income (FTUE step earn, §7.2).
+      const show = income > 0;
+      if (show === this.incomeRow.classList.contains('hud-hide')) {
+        this.incomeRow.classList.toggle('hud-hide', !show);
+        if (show && !reduce) replay(this.incomeRow, 'fx-pop');
+      }
     }
     if (rebirths !== this.last.rebirths || multiplier !== this.last.mult) {
       this.last.rebirths = rebirths;

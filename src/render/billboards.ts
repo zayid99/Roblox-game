@@ -96,17 +96,22 @@ export class PedestalLabels {
         attribute vec3 aCenter;
         attribute vec2 aCorner;
         varying vec2 vUv;
+        varying float vNear;
         void main() {
           vUv = uv;
           vec4 mv = modelViewMatrix * vec4(aCenter, 1.0);
+          // Fade labels right next to the camera (the spawn camera sits by the first pedestals).
+          vNear = smoothstep(4.0, 8.0, -mv.z);
           mv.xy += aCorner;
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D map;
         varying vec2 vUv;
+        varying float vNear;
         void main() {
           gl_FragColor = texture2D(map, vUv);
+          gl_FragColor.a *= vNear;
           if (gl_FragColor.a < 0.03) discard;
           #include <colorspace_fragment>
         }`,

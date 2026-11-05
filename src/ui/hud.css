@@ -97,6 +97,10 @@
 .toasts { left: 50%; top: 124px; translate: -50% 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: var(--z-toast); }
 .banners { left: 0; right: 0; top: 22%; height: 0; z-index: var(--z-banner); }
 .panel-open .toasts { top: auto; bottom: 20px; }
+/* Toasts make room for the tutorial objective pill (§4.1: y 192 while it shows) and for a centre banner. */
+.toasts { transition: top 180ms ease-out; }
+.hud-root.objective-up .toasts { top: 192px; }
+.hud-root.banner-up .toasts { top: calc(22% + 100px); }
 
 /* ---------------- Tracker ---------------- */
 .tracker { right: 16px; top: 84px; width: 260px; z-index: var(--z-hud); transition: opacity 250ms, transform 250ms; transform-origin: top right; }
@@ -255,6 +259,8 @@
 [data-layout="landscape"] .course .cb-zone, [data-layout="portrait"] .course .cb-zone { display: none; }
 [data-layout="landscape"] .course .cb-player, [data-layout="portrait"] .course .cb-player { width: 18px; height: 18px; margin-top: -9px; left: -9px; }
 [data-layout="landscape"] .toasts { top: 74px; }
+[data-layout="landscape"].objective-up .toasts { top: 128px; }
+[data-layout="landscape"].banner-up .toasts { top: calc(16% + 76px); }
 [data-layout="landscape"] .toast, [data-layout="portrait"] .toast { height: 38px; font-size: 15px; }
 [data-layout="landscape"] .toast .tdisc, [data-layout="portrait"] .toast .tdisc { width: 30px; height: 30px; }
 [data-layout="landscape"] .tracker { right: var(--sr); top: calc(var(--st) + 58px); width: 210px; }
@@ -298,7 +304,6 @@
 [data-layout="portrait"] .wave-meter .wm-disc > .ic { width: 34px; height: 34px; }
 [data-layout="portrait"] .course { width: min(320px, calc(100vw - 70px)); --cbw: min(320px, calc(100vw - 70px)); height: 12px; margin-top: 8px; }
 [data-layout="portrait"] .tracker { left: 16px; right: auto; top: calc(var(--st) + 188px); width: 220px; transform-origin: top left; }
-[data-layout="portrait"] .toasts { top: calc(var(--st) + 236px); }
 [data-layout="portrait"] .rail { left: var(--sl); top: 30%; display: grid; grid-template-columns: 52px 52px; gap: 18px 10px; }
 [data-layout="portrait"] .tile { width: 52px; height: 52px; border-radius: 14px; }
 [data-layout="portrait"] .tile > .ic { width: 40px; height: 40px; top: -9px; }
@@ -312,3 +317,10 @@
 [data-layout="portrait"] .banner .bn-title { font-size: 30px; --sw: 8px; --sd: 3px; }
 [data-layout="portrait"] .reveal-host { right: var(--sr); top: 40%; }
 [data-layout="portrait"] .controls-card, [data-layout="landscape"] .controls-card { min-width: 0; width: min(360px, 92vw); }
+
+/* Portrait: the top-left rail block and the tracker chip fill the upper band, so toasts sit in the clear
+   strip between the character's feet and the carry hotbar. */
+[data-layout="portrait"].hud-root .toasts { top: auto; bottom: calc(var(--sb) + 214px); }
+
+/* A panel always keeps toasts at the bottom (after the objective/banner offsets above). */
+.hud-root.panel-open[data-layout] .toasts { top: auto; bottom: 20px; }
