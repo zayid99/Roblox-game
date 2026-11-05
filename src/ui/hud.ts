@@ -193,7 +193,8 @@ export class Hud {
       multiplier: () => this.lastView?.multiplier ?? 1,
     }, compactHost);
     this.layer.appendChild(compactHost);
-    this.fxLayer.append(this.revealFx.el, this.countEl, this.flashEl, this.resume.el);
+    this.layer.appendChild(this.revealFx.el);
+    this.fxLayer.append(this.countEl, this.flashEl, this.resume.el);
 
     this.watcher.onChange(() => this.onLayoutChange());
   }
@@ -356,10 +357,9 @@ export class Hud {
       title: PANEL_TITLE[kind],
       hue: PANEL_HUE[kind],
       backdropClose: kind !== 'welcome',
-      onClose: () => this.closePanel(),
+      onClose: () => (kind === 'welcome' ? (this.content as WelcomePanel | null)?.collectFromClose() : this.closePanel()),
     });
     this.shell = shell;
-    if (kind === 'welcome') shell.el.querySelector('.btn-close')?.remove();
     switch (kind) {
       case 'shop':
         this.content = new ShopPanel(shell, this.env, tab ?? 'upgrades');

@@ -220,7 +220,7 @@ export function makePanelData(s: MockState): PanelData {
       return { found, total: SPECIES.length * 4, entries, featured: 'banana_shark' };
     },
     free: () => {
-      const today = s.dailyCount % 7;
+      const today = (s.dailyClaimable ? s.dailyCount : s.dailyCount - 1) % 7;
       const tiles: DailyTile[] = DAILY.map((reward, i) => ({
         day: i + 1, reward,
         state: i < today ? 'claimed' : i === today ? (s.dailyClaimable ? 'today' : 'claimed') : i === today + 1 ? 'tomorrow' : 'later',

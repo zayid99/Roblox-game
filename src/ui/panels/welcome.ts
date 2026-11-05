@@ -59,6 +59,11 @@ export class WelcomePanel implements PanelContent {
     this.raf = requestAnimationFrame(step);
   }
 
+  /** The life-ring close collects without the ad (the card never closes empty-handed). */
+  collectFromClose(): void {
+    this.collect(false, this.shell.el.querySelector('.btn-close') as HTMLElement);
+  }
+
   private collect(double: boolean, btn: HTMLElement): void {
     const v = this.env.deps.data.welcome();
     const from = this.env.centerOf(btn);

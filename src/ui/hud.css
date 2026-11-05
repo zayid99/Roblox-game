@@ -3,12 +3,15 @@
 .hud-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-hud); }
 .hud-layer { position: absolute; left: 0; top: 0; width: calc(100% / var(--u, 1)); height: calc(100% / var(--u, 1)); pointer-events: none; }
 .hud-ov, .hud-fx { position: absolute; inset: 0; pointer-events: none; }
-.hud-ov { z-index: var(--z-hud); }
+.hud-ov { z-index: var(--z-hud-top); }
 .hud-fx { z-index: var(--z-toast); }
 .hud-layer > * { position: absolute; }
 .part-hidden { opacity: 0 !important; pointer-events: none !important; transition: opacity 200ms; }
 .part-hidden * { pointer-events: none !important; }
-.hud-root.big-reveal .hud-layer > *:not(.tl):not(.reveal-host), .hud-root.big-reveal .hud-ov { opacity: 0; transition: opacity 150ms; }
+.hud-root.big-reveal .hud-layer > *:not(.tl):not(.reveal-host):not(.banners):not(.reveal-layer), .hud-root.big-reveal .hud-ov { opacity: 0; transition: opacity 150ms; }
+.hud-root.big-reveal .tl { z-index: calc(var(--z-reveal) + 1); }
+.hud-root.big-reveal .banners { z-index: calc(var(--z-reveal) + 2); }
+.reveal-layer { z-index: var(--z-reveal); }
 .hud-root.big-reveal .tl .income-chip { opacity: 0; }
 
 /* ---------------- Top-left: currency ---------------- */
@@ -93,6 +96,7 @@
 /* ---------------- Toasts and banners ---------------- */
 .toasts { left: 50%; top: 124px; translate: -50% 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: var(--z-toast); }
 .banners { left: 0; right: 0; top: 22%; height: 0; z-index: var(--z-banner); }
+.panel-open .toasts { top: auto; bottom: 20px; }
 
 /* ---------------- Tracker ---------------- */
 .tracker { right: 16px; top: 84px; width: 260px; z-index: var(--z-hud); transition: opacity 250ms, transform 250ms; transform-origin: top right; }
@@ -138,7 +142,7 @@
 .slot.filled { background: radial-gradient(circle at 50% 36%, var(--rh) 0%, var(--rc) 55%, var(--re) 100%); box-shadow: inset 0 0 0 2px rgba(255,255,255,.45), 0 4px 0 var(--ink); }
 .slot .sp { position: absolute; left: 50%; top: -10px; width: 56px; height: 56px; translate: -50% 0; }
 .slot .sp img { width: 100%; height: 100%; object-fit: contain; }
-.slot .rl { position: absolute; left: -6px; bottom: -6px; width: 20px; height: 20px; border-radius: 7px; background: var(--re); border: 3px solid var(--ink); font: 400 12px/14px var(--display); color: #fff; text-align: center; z-index: 2; }
+.slot .rl { position: absolute; left: -6px; bottom: -6px; width: 20px; height: 20px; border-radius: 7px; background: var(--re); border: 3px solid var(--ink); font: 400 13px/14px var(--display); color: #fff; text-align: center; z-index: 2; }
 .slot .mgem { position: absolute; right: -7px; bottom: -6px; z-index: 2; }
 .slot .crown-tab { top: -14px; z-index: 0; }
 .trip-bonus { position: absolute; left: 50%; top: -34px; translate: -50% 0; gap: 4px; height: 26px; font-size: 16px; color: var(--ink); }
@@ -157,8 +161,9 @@
 .rt-hook .rt-key { position: absolute; top: 64px; left: 50%; translate: -50% 0; height: 24px; width: 72px; font-size: 13px; box-shadow: 0 3px 0 var(--ink); }
 .reticle.locked .rt-key { display: none !important; }
 .rt-ring { left: -32px; top: -32px; width: 64px; height: 64px; }
-.rt-ring svg { width: 64px; height: 64px; }
-.rt-ring .rt-bolt { position: absolute; left: 50%; top: -12px; translate: -50% 0; }
+.rt-ring > svg { width: 64px; height: 64px; }
+.rt-ring .rt-bolt { position: absolute; left: 50%; top: -14px; translate: -50% 0; width: 22px; height: 22px; }
+.rt-ring .rt-bolt .ic { width: 22px; height: 22px; }
 .snap { animation: snap 120ms var(--ease-out) both; }
 .rt-ring.snap { animation-duration: 100ms; }
 @keyframes snap { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }

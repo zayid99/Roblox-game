@@ -102,7 +102,7 @@
 @keyframes giftBounce { 0%, 60%, 100% { translate: 0 0; } 30% { translate: 0 -8px; } }
 .gf.st-claimed { filter: brightness(.8); }
 .gf.mega { box-shadow: inset 0 -5px 0 #F2C24A, 0 4px 0 var(--ink), 0 0 0 3px #FFC92E; background: linear-gradient(180deg, #FFF6C2, #FFE680); }
-.gf-mega { position: absolute; bottom: -10px; height: 20px; padding: 0 8px; border-radius: 999px; background: linear-gradient(180deg, var(--gold-a), var(--gold-b)); border: 3px solid var(--ink); font: 400 12px/14px var(--display); color: var(--ink); }
+.gf-mega { position: absolute; bottom: -10px; height: 20px; padding: 0 8px; border-radius: 999px; background: linear-gradient(180deg, var(--gold-a), var(--gold-b)); border: 3px solid var(--ink); font: 400 13px/14px var(--display); color: var(--ink); }
 .gf-claim { width: 78px; padding: 0; }
 .lid-pop { animation: lidPop 220ms var(--ease-out) both; }
 @keyframes lidPop { to { transform: translateY(-30px) rotate(-20deg); opacity: 0; } }

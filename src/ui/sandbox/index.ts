@@ -249,8 +249,9 @@ export async function runSandbox(root: HTMLElement): Promise<void> {
       b.onclick = fn;
       menu.appendChild(b);
     }
-    root.append(menu, logEl);
-  }
+    root.append(menu);
+  } else logEl.style.display = 'none';
+  root.appendChild(logEl);
 
   const panel = q.get('panel');
   if (panel) openSpec(panel);

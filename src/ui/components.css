@@ -111,7 +111,7 @@
 .chip--grape { background: var(--grape); border: 3px solid var(--ink); }
 .chip .t-stroke { --sw: 4px; --sd: 2px; }
 .rpill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px 0 3px; border-radius: 999px; border: 3px solid var(--ink); background: var(--re); font: 400 13px/1 var(--display); color: #fff; white-space: nowrap; text-shadow: 0 1.5px 0 var(--ink); }
-.rpill b { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 5px; background: var(--rc); color: var(--ink); font-weight: 400; text-shadow: none; font-size: 12px; }
+.rpill b { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 5px; background: var(--rc); color: var(--ink); font-weight: 400; text-shadow: none; font-size: 13px; }
 
 /* ---------- C2 Rail tile ---------- */
 .tile {
@@ -189,13 +189,13 @@
 @keyframes panelOut { to { transform: scale(.88); opacity: 0; } }
 /* Rope border (signature 1) */
 .panel::before {
-  content: ''; position: absolute; inset: -9px; border: 14px solid transparent; border-image: var(--rope-tile) 14 round;
+  content: ''; position: absolute; inset: -11px; border: 18px solid transparent; border-image: var(--rope-tile) 14 round;
   pointer-events: none; z-index: 2;
 }
 /* Wave-crest scallop (signature 2) */
 .panel::after {
   content: ''; position: absolute; left: 6px; right: 6px; top: 5px; height: 12px; pointer-events: none; z-index: 1;
-  background: radial-gradient(circle at 14px 12px, var(--frame-hi) 9px, rgba(255,255,255,.3) 9.5px 11px, transparent 11.5px) 0 0 / 28px 12px repeat-x;
+  background: radial-gradient(circle at 14px 12px, #2A6A9E 9px, rgba(255,255,255,.35) 9.5px 11px, transparent 11.5px) 0 0 / 28px 12px repeat-x;
   border-radius: 18px 18px 0 0;
 }
 .hue-grass { --rb-hi: var(--grass-hi); --rb: var(--grass); --rb-lo: var(--grass-lo); --rb-lip: var(--grass-lip); }

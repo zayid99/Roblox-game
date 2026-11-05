@@ -17,7 +17,7 @@ function ropeTile(): string {
     const c = ROPE[((k % 3) + 3) % 3];
     const x0 = 7 * k - 4;
     const d = `M${x0} -4L${x0 + S + 8} ${S + 4}`;
-    strands += `<path d="${d}" stroke="${INK}" stroke-width="7"/><path d="${d}" stroke="${c}" stroke-width="4.4"/><path d="${d}" stroke="#fff" stroke-opacity=".35" stroke-width="1" transform="translate(-1.3 1.3)"/>`;
+    strands += `<path d="${d}" stroke="${INK}" stroke-width="7"/><path d="${d}" stroke="${c}" stroke-width="5"/><path d="${d}" stroke="#fff" stroke-opacity=".35" stroke-width="1" transform="translate(-1.3 1.3)"/>`;
   }
   const band = `M0 0H${S}V${S}H0Z M${B} ${B}V${S - B}H${S - B}V${B}Z`;
   const knot = (x: number, y: number) =>
