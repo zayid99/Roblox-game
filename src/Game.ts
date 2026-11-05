@@ -36,7 +36,7 @@ import { updateAnimatedMaterials } from './render/materials';
 import { Particles } from './render/particles';
 import { WaveVisual } from './render/waveVisual';
 import { buildWorld, type WorldVisuals } from './render/world';
-import { Hud } from './ui/hud';
+import { Hud } from './ui/legacy/hud';
 
 const SAVE_KEY = 'swing-or-splash-save';
 const FIXED_DT = 1 / 120;
@@ -134,7 +134,7 @@ export class Game {
     this.input = new Input(this.canvas, this.hud.joyBase, this.hud.joyKnob);
     this.input.bindJumpButton(this.hud.jumpButton);
     this.input.onFirstGesture = () => this.sfx.unlock();
-    this.input.onKey = (code) => this.onKey(code);
+    this.input.onKey = (e) => this.onKey(e.code);
     this.hud.setTouchMode(this.input.touchMode);
     this.hud.setSound(!this.state.settings.muted);
     this.sfx.setMuted(!!this.state.settings.muted);

@@ -1,10 +1,10 @@
-import { HOME_FRONT_Z } from '../game/config';
-import type { Course } from '../game/course';
-import { MUTATIONS, RARITIES, SPECIES, creatureIncome, creatureLabel, getSpecies, type CreatureRef } from '../game/creatures';
-import { UPGRADES, UPGRADE_ORDER, formatCash, rebirthMultiplier, type UpgradeKey } from '../game/economy';
-import type { GameState } from '../game/state';
-import type { WavePhase } from '../game/wave';
-import type { IconFactory } from '../render/icons';
+import { HOME_FRONT_Z } from '../../game/config';
+import type { Course } from '../../game/course';
+import { MUTATIONS, RARITIES, SPECIES, creatureIncome, creatureLabel, getSpecies, type CreatureRef } from '../../game/creatures';
+import { UPGRADES, UPGRADE_ORDER, formatCash, rebirthMultiplier, type UpgradeKey } from '../../game/economy';
+import type { GameState } from '../../game/state';
+import type { WavePhase } from '../../game/wave';
+import type { IconFactory } from '../../render/icons';
 
 export interface HudView {
   cash: number;
