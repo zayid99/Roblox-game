@@ -7,8 +7,6 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
   SRGBColorSpace,
-  Sprite,
-  SpriteMaterial,
   type Matrix4,
   Vector3,
 } from 'three';
@@ -83,19 +81,6 @@ export function textTexture(lines: TextLine[], width: number, height: number, bg
 export function signMesh(lines: TextLine[], w: number, h: number, bg = '#1F3F7A'): Mesh {
   const tex = textTexture(lines, Math.round(w * 96), Math.round(h * 96), bg);
   return new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: tex, transparent: true, side: DoubleSide, toneMapped: false }));
-}
-
-/** Text that always faces the camera. */
-export function textSprite(lines: TextLine[], w: number, h: number): Sprite {
-  const tex = textTexture(lines, Math.round(w * 80), Math.round(h * 80));
-  const sprite = new Sprite(new SpriteMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
-  sprite.scale.set(w, h, 1);
-  return sprite;
-}
-
-export function disposeSprite(sprite: Sprite): void {
-  sprite.material.map?.dispose();
-  sprite.material.dispose();
 }
 
 // ---------- Sign atlas: every world sign in one texture and one draw call ----------

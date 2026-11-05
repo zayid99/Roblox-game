@@ -58,16 +58,6 @@ export class PortraitFactory {
     return this.queue.length;
   }
 
-  /** Synchronous render (legacy callers that need the image immediately). */
-  getNow(c: CreatureRef): string {
-    let url = this.cache.get(key(c));
-    if (!url) {
-      url = this.render(c);
-      this.cache.set(key(c), url);
-    }
-    return url;
-  }
-
   private setup(): void {
     this.scene = new Scene();
     this.scene.add(new AmbientLight('#ffffff', 0.5));

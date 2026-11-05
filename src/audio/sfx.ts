@@ -1,11 +1,9 @@
 // SFX bank of §8.6: every SfxId, footsteps and rope sounds. Peaks follow the table (per-voice peak before the sfx bus).
-// The v0.1 `Sfx` class lives in legacySfx.ts and is re-exported here until the lead switches Game.ts to AudioDirector.
 
 import { db, mtof, type Engine, type NoiseKind } from './engine';
 import * as I from './instruments';
 import type { Surface } from '../contracts';
 
-export { Sfx } from './legacySfx';
 
 export type SfxId =
   | 'ui.click' | 'ui.hover' | 'ui.open' | 'ui.close' | 'ui.tab' | 'ui.denied' | 'toast' | 'jump' | 'doubleJump' | 'grab' | 'release'
