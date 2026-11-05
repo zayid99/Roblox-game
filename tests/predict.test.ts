@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { generateCourse } from '../src/game/course';
 import { NO_INPUT, PlayerSim, type PlayerInput } from '../src/game/player';
 import { inPerfectWindow, predictRelease, rateRelease, releaseQuality } from '../src/game/predict';
+import { GameSim } from '../src/game/sim';
+import { GameState } from '../src/game/state';
 
 const DT = 1 / 120;
 const stats = { runSpeed: 10, reach: 9.5, power: 1 };
@@ -79,6 +81,14 @@ describe('predictRelease', () => {
       expect(compared).toBeGreaterThan(30);
       expect(maxErr).toBeLessThan(0.05);
     }
+  });
+
+  it('accepts a GameSim directly', () => {
+    const sim = new GameSim(new GameState(), { rngSeed: 1 });
+    sim.player.reset(sim.course.homeSpawn.clone().add(new Vector3(0, 3, 0)));
+    const pred = predictRelease(sim);
+    expect(pred.landsOn).toBe(sim.course.home);
+    expect(pred.points.length).toBe(20);
   });
 
   it('does not change the real player', () => {
