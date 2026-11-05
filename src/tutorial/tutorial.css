@@ -1,0 +1,237 @@
+/* Tutorial overlay (§7.1). Same visual language as §2: Lilita One display text with ink outlines,
+   chunky cream pill with a hard lip, sun hue for tutorial accents. The §2.2 tokens it needs are
+   redeclared here with the same names and values, so it renders before (or without) src/ui/tokens.css. */
+
+.tut {
+  --ink: #1B1736;
+  --display: 'Lilita One', 'Fredoka', system-ui, sans-serif;
+  --body: 'Fredoka', system-ui, sans-serif;
+  --sun-hi: #FFF07A; --sun: #FFC92E; --sun-lo: #F39A12; --sun-lip: #B86400;
+  --grass: #3FCB4B; --coral: #FF4D5E; --sky: #34AFFF;
+  --card: #FFF6E0; --card-edge: #E9CF98; --card-shade: #F2E2BC;
+  --text-ink: #1B1736; --text-muted: #5E6A80;
+  --ease-back: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --st: max(12px, calc(env(safe-area-inset-top) + 8px));
+  --sr: max(12px, calc(env(safe-area-inset-right) + 8px));
+
+  position: absolute; inset: 0; pointer-events: none;  /* no z-index: children join the #ui stacking order */
+  font-family: var(--body); color: var(--text-ink);
+  -webkit-user-select: none; user-select: none;
+}
+.tut *, .tut *::before, .tut *::after { box-sizing: border-box; }
+
+/* Display text with the stroke recipe (paint-order keeps half the stroke outside). */
+.tut-t {
+  font-family: var(--display); font-weight: 400; color: #fff; letter-spacing: .02em; line-height: 1;
+  -webkit-text-stroke: var(--sw, 6px) var(--ink); paint-order: stroke fill;
+  text-shadow: 0 var(--sd, 3px) 0 var(--ink);
+}
+html.no-po .tut-t { -webkit-text-stroke: 0; text-shadow: 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink),
+  2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink), 0 4px 0 var(--ink); }
+
+/* ---------------------------------------------------------------- objective pill */
+.tut-pill-wrap {
+  position: fixed; left: 50%; top: 124px; z-index: var(--z-coach, 60);
+  transform: translateX(-50%); max-width: min(560px, 92vw);
+  opacity: 0; transition: opacity 160ms ease-in;
+}
+.tut[data-layout="landscape"] .tut-pill-wrap { top: 74px; }
+.tut[data-layout="portrait"] .tut-pill-wrap { top: calc(var(--st) + 184px); width: 92vw; max-width: 92vw; }
+.tut-pill-wrap.is-on { opacity: 1; transition-duration: 0ms; }
+.tut-pill-wrap.is-instant { transition: none; }
+
+.tut-pill {
+  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 24px 6px 14px;
+  background: var(--card); border: 4px solid var(--ink); border-radius: 999px;
+  box-shadow: inset 0 -5px 0 var(--card-shade), 0 5px 0 var(--ink);
+}
+.tut-pill.is-pop { animation: tut-pop 240ms var(--ease-back) both; }
+.tut-pill.is-fail { border-color: var(--sun-lo); box-shadow: inset 0 -5px 0 var(--card-shade), 0 5px 0 var(--sun-lip); }
+.tut-pill.is-shake { animation: tut-shake 240ms linear both; }
+.tut-pill-wrap.is-done .tut-pill { animation: tut-out 160ms 200ms ease-in both; }
+
+.tut-glyph { flex: 0 0 auto; min-width: 64px; display: flex; justify-content: center; }
+.tut-glyph[hidden] { display: none; }
+.tut-pill:has(.tut-glyph[hidden]) { padding-left: 24px; }
+.tut-glyphs { display: flex; align-items: center; gap: 8px; }
+.tut-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 4px 0; }
+.tut-head { --sw: 0px; --sd: 0px; color: var(--text-ink); -webkit-text-stroke: 0; text-shadow: none; font-size: 26px; white-space: nowrap; }
+.tut-pill[data-size="big"] .tut-head { font-size: 34px; }
+.tut-pill[data-size="small"] .tut-head { font-size: 20px; }
+.tut-pill[data-size="big"] { min-height: 66px; }
+.tut-pill[data-size="small"] { min-height: 46px; }
+.tut-pill[data-size="big"] .tut-glyph { transform: scale(1.15); margin: 0 10px; }
+.tut-sub { font: 600 15px/1.15 var(--body); color: var(--text-muted); }
+.tut-sub[hidden] { display: none; }
+.tut[data-layout="landscape"] .tut-pill, .tut[data-layout="portrait"] .tut-pill { min-height: 46px; gap: 8px; }
+.tut[data-layout="landscape"] .tut-head, .tut[data-layout="portrait"] .tut-head { font-size: 20px; }
+.tut[data-layout="landscape"] .tut-pill[data-size="big"] .tut-head,
+.tut[data-layout="portrait"] .tut-pill[data-size="big"] .tut-head { font-size: 26px; }
+.tut[data-layout="landscape"] .tut-sub, .tut[data-layout="portrait"] .tut-sub { font-size: 13px; }
+.tut[data-layout="portrait"] .tut-head { white-space: normal; }
+
+.tut-chip {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 12px 0 6px;
+  background: var(--ink); color: #fff; border-radius: 999px; font: 400 15px/1 var(--display); margin-left: 4px;
+}
+.tut-chip[hidden] { display: none; }
+.tut-chip svg { display: block; }
+
+.tut-check {
+  position: absolute; right: -14px; top: -18px; width: 56px; height: 56px; opacity: 0; transform: scale(1.4);
+}
+.tut-check.is-on { animation: tut-check 200ms var(--ease-back) both; }
+
+/* ---------------------------------------------------------------- keycaps (C12) */
+.tut-key {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 34px; height: 34px; padding: 0 8px; border: 3px solid var(--ink); border-radius: 8px;
+  background: linear-gradient(#FFFFFF, #E3E6EF); box-shadow: 0 4px 0 var(--ink);
+  font: 400 16px/1 var(--display); color: var(--ink); overflow: hidden;
+}
+.tut-key b { position: relative; z-index: 1; font-weight: 400; }
+.tut-key--sm { min-width: 26px; height: 26px; padding: 0 5px; font-size: 13px; box-shadow: 0 3px 0 var(--ink); }
+.tut-key--wide { min-width: 46px; }
+.tut-key--space { width: 120px; }
+.tut-key--space::after {
+  content: ''; position: absolute; left: 3px; right: 3px; bottom: 3px; height: 6px; border-radius: 3px;
+  background: var(--sun); transform-origin: left center; transform: scaleX(0);
+}
+.tut-key-arrow { position: absolute; width: 16px; height: 16px; color: var(--ink); opacity: .14; }
+.tut-wasd { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; margin: -4px 0; }
+.tut-wasd-row { display: flex; gap: 2px; }
+.tut-wasd .tut-key--sm { min-width: 22px; height: 22px; padding: 0 4px; font-size: 12px; border-width: 2.5px; border-radius: 6px; box-shadow: 0 2px 0 var(--ink); }
+
+/* SPACE hold loop: down 0-120 ms, fill 120-1100 ms, hold, up at 1300 ms; 1600 ms loop. */
+.tut-hold { animation: tut-key-hold 1600ms linear infinite; }
+.tut-hold::after { animation: tut-key-fill 1600ms linear infinite; }
+/* LET GO: the keycap pops up with speed lines. */
+.tut-letgo { animation: tut-key-up 700ms var(--ease-back) infinite; overflow: visible; }
+.tut-letgo::before {
+  content: ''; position: absolute; left: 50%; width: 46px; top: -15px; height: 9px; margin-left: -23px;
+  background: repeating-linear-gradient(90deg, var(--ink) 0 3px, transparent 3px 21px); border-radius: 2px;
+  animation: tut-lines 700ms ease-out infinite;
+}
+.tut-letgo::after { transform: scaleX(1); background: var(--grass); }
+.tut-tap { animation: tut-key-tap 800ms ease-in-out infinite; }
+
+/* ---------------------------------------------------------------- ghost thumb (touch) */
+.tut-thumb { position: relative; display: inline-block; width: 48px; height: 48px; opacity: .75; }
+.tut-thumb svg { position: relative; display: block; }
+.tut-thumb .tut-ring, .tut-jump-ghost .tut-ring {
+  position: absolute; inset: -2px; border-radius: 50%; border: 4px solid var(--sun); opacity: 0;
+}
+.tut-thumb--drag { animation: tut-thumb-drag-mini 1400ms ease-in-out infinite; }
+.tut-thumb { overflow: visible; }
+.tut-thumb--hold { animation: tut-thumb-press 1800ms ease-in-out infinite; }
+.tut-thumb--hold .tut-ring { animation: tut-ring-fill 1800ms linear infinite; }
+.tut-thumb--lift { animation: tut-thumb-lift 700ms var(--ease-out) infinite; }
+
+.tut-jump-ghost {
+  position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: var(--z-spot, 30); opacity: 0; transition: opacity 160ms;
+}
+.tut-jump-ghost.is-on { opacity: 1; }
+.tut-jump-ghost .tut-ring { inset: auto; left: -66px; top: -66px; width: 132px; height: 132px; animation: tut-spot-ring 1200ms ease-out infinite; }
+.tut-ghost-art { position: absolute; left: -36px; top: -30px; width: 72px; height: 72px; opacity: .75; animation: tut-thumb-press 1800ms ease-in-out infinite; }
+.tut-jump-ghost.is-lift .tut-ghost-art { animation: tut-thumb-lift 700ms var(--ease-out) infinite; }
+.tut-ghost-art svg, .tut-drag-art svg, .tut-hand-art svg { display: block; }
+
+/* ---------------------------------------------------------------- creature portrait */
+.tut-portrait {
+  display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; margin: -10px 0;
+  border-radius: 50%; border: 3px solid var(--ink); background: radial-gradient(circle at 50% 40%, #E3E9F0, #A9B8C9 70%);
+  box-shadow: 0 3px 0 var(--ink); overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- drag to look */
+.tut-mini-hand { display: inline-block; animation: tut-drag-mini 1600ms ease-in-out infinite; }
+.tut-drag { position: fixed; left: 50%; top: 56%; width: 0; height: 0; z-index: var(--z-hud-top, 20); opacity: 0; transition: opacity 200ms; }
+.tut-drag.is-touch { left: 75%; }
+.tut-drag.is-on { opacity: 1; }
+.tut-drag-art { position: absolute; left: -44px; top: -20px; animation: tut-drag-lr 1600ms ease-in-out infinite; filter: drop-shadow(0 4px 0 rgba(27,23,54,.35)); }
+.tut-drag::before {
+  content: ''; position: absolute; left: -90px; top: 66px; width: 180px; height: 8px; border-radius: 4px;
+  background: repeating-linear-gradient(90deg, #fff 0 14px, transparent 14px 24px); opacity: .7;
+}
+
+/* ---------------------------------------------------------------- spotlight */
+.tut-spot, .tut-spot-ring { position: fixed; left: 0; top: 0; width: 0; height: 0; opacity: 0; pointer-events: none; }
+.tut-spot { z-index: var(--z-spot, 30); box-shadow: 0 0 0 9999px rgba(10, 8, 32, .5); transition: opacity 200ms; }
+.tut-spot-ring { z-index: var(--z-spot, 30); border: 4px solid var(--sun); }
+.tut-spot.is-on { opacity: 1; }
+.tut-spot-ring.is-on { animation: tut-spot-ring 1200ms ease-out infinite; }
+.tut--spot-panel .tut-spot, .tut--spot-panel .tut-spot-ring, .tut--spot-panel .tut-hand { z-index: var(--z-coach, 60); }
+.tut-hand { position: fixed; left: 0; top: 0; z-index: var(--z-spot, 30); opacity: 0; display: flex; align-items: flex-end; gap: 6px; }
+.tut-hand.is-on { opacity: 1; }
+.tut-hand-art { display: block; transform: rotate(-20deg); }
+.tut-hand.is-on .tut-hand-art { animation: tut-hand-tap 900ms ease-in-out infinite; }
+.tut-hand-key { display: none; }
+.tut-hand.has-key .tut-hand-key { display: inline-flex; }
+
+/* ---------------------------------------------------------------- stamp */
+.tut-stamp {
+  --sw: 9px; --sd: 4px;
+  position: fixed; left: 50%; top: 30%; z-index: var(--z-coach, 60); font-size: 56px; color: var(--sun);
+  white-space: nowrap; opacity: 0; transform: translate(-50%, -50%) rotate(-6deg);
+}
+.tut-stamp.is-on { animation: tut-stamp 1000ms var(--ease-out) both; }
+.tut[data-layout="landscape"] .tut-stamp, .tut[data-layout="portrait"] .tut-stamp { font-size: 40px; }
+
+/* ---------------------------------------------------------------- skip link (C1 tertiary) */
+.tut-skip {
+  position: fixed; right: 16px; top: 76px; z-index: var(--z-hud-top, 20);
+  min-width: 48px; min-height: 48px; padding: 0 6px; border: 0; background: none; cursor: pointer;
+  font: 600 15px/48px var(--body); color: #fff; text-shadow: 0 2px 0 var(--ink);
+  opacity: 0; visibility: hidden; transition: opacity 200ms; pointer-events: auto;
+}
+.tut-skip.is-on { opacity: 1; visibility: visible; }
+.tut-skip:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; border-radius: 8px; }
+@media (hover: hover) { .tut-skip:hover { text-decoration: underline; } }
+.tut[data-layout="landscape"] .tut-skip { right: var(--sr); top: calc(var(--st) + 56px); }
+.tut[data-layout="portrait"] .tut-skip { right: var(--sr); top: calc(var(--st) + 56px); }
+
+/* ---------------------------------------------------------------- Controls card (C21 styling, 360 wide) */
+.tut-controls {
+  position: fixed; left: 50%; top: 50%; z-index: var(--z-coach, 60); width: min(360px, 92vw); min-height: 140px;
+  padding: 12px 16px 14px; background: var(--card); border: 4px solid var(--ink); border-radius: 18px;
+  box-shadow: inset 0 -5px 0 var(--card-shade), 0 5px 0 var(--ink);
+  transform: translate(-50%, -50%) scale(.9); opacity: 0; visibility: hidden; pointer-events: auto; cursor: pointer;
+}
+.tut-controls.is-on { visibility: visible; animation: tut-card-in 240ms var(--ease-back) both; }
+.tut-controls-title { --sw: 6px; --sd: 3px; font-size: 22px; color: var(--sun); text-align: center; margin-bottom: 8px; }
+.tut-controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.tut-controls-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tut-controls-keys { display: flex; gap: 2px; flex: 0 0 auto; }
+.tut-controls-text { font: 600 13px/1.1 var(--body); color: var(--text-ink); }
+
+/* ---------------------------------------------------------------- keyframes */
+@keyframes tut-pop { 0% { transform: scale(.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes tut-out { to { transform: scale(.9); opacity: 0; } }
+@keyframes tut-shake { 0%, 100% { transform: translateX(0); } 16% { transform: translateX(-6px); } 33% { transform: translateX(6px); }
+  50% { transform: translateX(-6px); } 66% { transform: translateX(6px); } 83% { transform: translateX(-6px); } }
+@keyframes tut-check { 0% { opacity: 0; transform: scale(1.4); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes tut-key-hold { 0% { transform: translateY(0); box-shadow: 0 4px 0 var(--ink); } 7.5%, 81% { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); }
+  81.5%, 100% { transform: translateY(0); box-shadow: 0 4px 0 var(--ink); } }
+@keyframes tut-key-fill { 0%, 7.5% { transform: scaleX(0); } 68.75%, 81% { transform: scaleX(1); } 81.5%, 100% { transform: scaleX(0); } }
+@keyframes tut-key-up { 0% { transform: translateY(4px); } 40% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
+@keyframes tut-lines { 0% { opacity: 0; transform: translateY(6px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes tut-key-tap { 0%, 60%, 100% { transform: translateY(0); box-shadow: 0 4px 0 var(--ink); } 70%, 85% { transform: translateY(4px); box-shadow: 0 0 0 var(--ink); } }
+@keyframes tut-thumb-drag { 0% { transform: translateY(0); opacity: .75; } 64% { transform: translateY(-60px); opacity: .75; } 75%, 100% { transform: translateY(-60px); opacity: 0; } }
+@keyframes tut-thumb-drag-mini { 0% { transform: translateY(8px); opacity: .75; } 64% { transform: translateY(-10px); opacity: .75; } 75%, 100% { transform: translateY(-10px); opacity: 0; } }
+@keyframes tut-thumb-press { 0%, 11% { transform: translateY(0) scale(1); } 17%, 72% { transform: translateY(6px) scale(.9); } 83%, 100% { transform: translateY(0) scale(1); } }
+@keyframes tut-ring-fill { 0%, 11% { opacity: 0; transform: scale(.6); } 17% { opacity: 1; transform: scale(.6); } 72% { opacity: 1; transform: scale(1.15); } 83%, 100% { opacity: 0; transform: scale(1.15); } }
+@keyframes tut-thumb-lift { 0% { transform: translateY(6px) scale(.9); opacity: .75; } 100% { transform: translateY(-24px) scale(1.05); opacity: 0; } }
+@keyframes tut-drag-mini { 0%, 100% { transform: translateX(-8px); } 50% { transform: translateX(8px); } }
+@keyframes tut-drag-lr { 0%, 100% { transform: translateX(-40px); } 50% { transform: translateX(40px); } }
+@keyframes tut-spot-ring { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.12); opacity: 0; } }
+@keyframes tut-hand-tap { 0%, 100% { transform: rotate(-20deg) translate(0, 0) scale(1); } 45% { transform: rotate(-20deg) translate(-6px, -10px) scale(.92); } }
+@keyframes tut-stamp { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(1); }
+  80% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(1); } 100% { opacity: 0; transform: translate(-50%, -60%) rotate(-6deg) scale(1); } }
+@keyframes tut-card-in { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.8); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+/* Reduce motion: loops stop, pops become fades. */
+.tut--rm *, .tut--rm *::before, .tut--rm *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tut *, .tut *::before, .tut *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
+}
