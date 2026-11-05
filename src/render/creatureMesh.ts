@@ -1,7 +1,7 @@
 import { Matrix4, Mesh, type BufferGeometry } from 'three';
 import { getSpecies, type CreatureRef, type Species } from '../game/creatures';
 import { BoxBuilder } from './boxes';
-import { mutationMaterials } from './materials';
+import { creatureMaterial, type CreatureMaterial } from './materials';
 
 // Every creature is built from boxes, facing +z, standing on y = 0, roughly 1 m across.
 
@@ -21,10 +21,16 @@ const WHITE = '#ffffff';
 const PUPIL = '#1b1b2a';
 const DARK = '#1d1d24';
 
-function eyes(b: BoxBuilder, h: Head, size = 1): void {
+/** G13 eyes: bigger, with a 1-texel highlight and a brow box. Eye boxes carry the blink attribute. */
+function eyes(b: BoxBuilder, h: Head, size = 1.18): void {
+  const y = h.eyeY;
   for (const sx of [-1, 1]) {
-    b.box(sx * h.eyeX, h.eyeY, h.eyeZ, 0.17 * size, 0.2 * size, 0.04, WHITE);
-    b.box(sx * h.eyeX, h.eyeY - 0.02 * size, h.eyeZ + 0.025, 0.08 * size, 0.11 * size, 0.02, PUPIL);
+    const x = sx * h.eyeX;
+    b.box(x, y, h.eyeZ, 0.17 * size, 0.2 * size, 0.04, WHITE, { eye: y, noOutline: true });
+    b.box(x + sx * 0.005, y - 0.02 * size, h.eyeZ + 0.025, 0.09 * size, 0.12 * size, 0.02, PUPIL, { eye: y, noOutline: true });
+    b.box(x - 0.022 * size, y + 0.018 * size, h.eyeZ + 0.037, 0.035 * size, 0.035 * size, 0.01, WHITE, { eye: y, noOutline: true });
+    const brow = new Matrix4().makeRotationZ(sx * -0.18);
+    b.box(x, y + 0.15 * size, h.eyeZ + 0.02, 0.19 * size, 0.045 * size, 0.04, DARK, { matrix: brow, noOutline: true });
   }
 }
 
@@ -222,24 +228,51 @@ function accessory(b: BoxBuilder, s: Species, h: Head): void {
 }
 
 const geometryCache = new Map<string, BufferGeometry>();
+const outlineCache = new Map<string, BufferGeometry>();
+const builders = new Map<string, BoxBuilder>();
 
-export function creatureGeometry(speciesId: string): BufferGeometry {
-  let g = geometryCache.get(speciesId);
-  if (!g) {
+function builderFor(speciesId: string): BoxBuilder {
+  let b = builders.get(speciesId);
+  if (!b) {
     const s = getSpecies(speciesId);
-    const b = new BoxBuilder();
+    b = new BoxBuilder();
     const head = buildBody(b, s);
     details(b, s, head);
     eyes(b, head);
     accessory(b, s, head);
-    g = b.build();
+    builders.set(speciesId, b);
+  }
+  return b;
+}
+
+/** One merged geometry per species (shared by every instance). */
+export function creatureGeometry(speciesId: string): BufferGeometry {
+  let g = geometryCache.get(speciesId);
+  if (!g) {
+    g = builderFor(speciesId).build();
     geometryCache.set(speciesId, g);
   }
   return g;
 }
 
-export function makeCreatureMesh(c: CreatureRef): Mesh {
-  const mesh = new Mesh(creatureGeometry(c.speciesId), mutationMaterials[c.mutation] ?? mutationMaterials[0]);
-  mesh.scale.setScalar(getSpecies(c.speciesId).look.scale ?? 1);
+/** The species' ink outline hull (boxes grown by .04, render BackSide). */
+export function creatureOutline(speciesId: string): BufferGeometry {
+  let g = outlineCache.get(speciesId);
+  if (!g) {
+    g = builderFor(speciesId).outline(0.045);
+    outlineCache.set(speciesId, g);
+  }
+  return g;
+}
+
+/** Base scale of a species (before the wild ×1.5 / pedestal ×1.3 factors). */
+export function speciesScale(speciesId: string): number {
+  return getSpecies(speciesId).look.scale ?? 1;
+}
+
+/** A creature body with its own toon material (blink + flash uniforms in `material.userData`). */
+export function makeCreatureMesh(c: CreatureRef): Mesh & { material: CreatureMaterial } {
+  const mesh = new Mesh(creatureGeometry(c.speciesId), creatureMaterial(c.mutation)) as Mesh & { material: CreatureMaterial };
+  mesh.scale.setScalar(speciesScale(c.speciesId));
   return mesh;
 }

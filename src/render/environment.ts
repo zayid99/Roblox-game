@@ -1,111 +1,47 @@
-import {
-  BackSide,
-  Color,
-  DirectionalLight,
-  Fog,
-  HemisphereLight,
-  Mesh,
-  PlaneGeometry,
-  type Scene,
-  ShaderMaterial,
-  SphereGeometry,
-  type Vector3,
-} from 'three';
+import { Color, DirectionalLight, Fog, HemisphereLight, SRGBColorSpace, Vector3, type Scene } from 'three';
 
-export const SKY_TOP = new Color('#3fb6ff');
-export const HORIZON = new Color('#d6f3ff');
-const FOG_NEAR = 160;
-const FOG_FAR = 560;
+/** Sun direction (towards the sun). The sky's sun disc uses the same vector (G2). */
+export const SUN_DIR = new Vector3(-0.45, 0.8, 0.35).normalize();
 
-/** Sky dome, sea, fog and lights. */
-export class Environment {
-  readonly sea: Mesh;
-  private readonly seaMaterial: ShaderMaterial;
-  private readonly sky: Mesh;
+export const SKY = {
+  zenith: new Color('#2A8CFF'),
+  mid: new Color('#6CC6FF'),
+  horizon: new Color('#BFE9FF'),
+  stormZenith: new Color('#3D5F93'),
+  stormMid: new Color('#6E8DB8'),
+  stormHorizon: new Color('#9BB8D6'),
+};
+
+export const FOG_NEAR = 170;
+export const FOG_FAR = 620;
+const RGB_TMP = { r: 0, g: 0, b: 0 };
+const SUN_INTENSITY = 2.8;
+const HEMI_INTENSITY = 1.0;
+
+/** Hemisphere + sun lights and fog (G2). Storm mood darkens all three (G11). */
+export class Lighting {
+  readonly hemi = new HemisphereLight('#BFE3FF', '#2F7FA0', HEMI_INTENSITY);
+  readonly sun = new DirectionalLight('#FFF1D6', SUN_INTENSITY);
+  readonly fog = new Fog(SKY.horizon.clone(), FOG_NEAR, FOG_FAR);
+  /** Fog colour in output (sRGB) space, for shaders that blend to the horizon by hand. */
+  readonly fogOut = new Vector3();
+  private mood = -1;
 
   constructor(scene: Scene) {
-    scene.fog = new Fog(HORIZON, FOG_NEAR, FOG_FAR);
-    scene.background = HORIZON;
-
-    const hemi = new HemisphereLight('#d8f1ff', '#7a9bb0', 1.5);
-    scene.add(hemi);
-    const sun = new DirectionalLight('#fff4dc', 1.9);
-    sun.position.set(-40, 80, 30);
-    scene.add(sun);
-
-    this.sky = new Mesh(
-      new SphereGeometry(900, 24, 12),
-      new ShaderMaterial({
-        side: BackSide,
-        depthWrite: false,
-        fog: false,
-        uniforms: { uTop: { value: SKY_TOP }, uHorizon: { value: HORIZON } },
-        vertexShader: /* glsl */ `
-          varying float vH;
-          void main() {
-            vH = normalize(position).y;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }`,
-        fragmentShader: /* glsl */ `
-          uniform vec3 uTop;
-          uniform vec3 uHorizon;
-          varying float vH;
-          void main() {
-            gl_FragColor = vec4(mix(uHorizon, uTop, smoothstep(0.0, 0.45, vH)), 1.0);
-            #include <colorspace_fragment>
-          }`,
-      }),
-    );
-    this.sky.renderOrder = -10;
-    scene.add(this.sky);
-
-    this.seaMaterial = new ShaderMaterial({
-      fog: false,
-      uniforms: {
-        uTime: { value: 0 },
-        uShallow: { value: new Color('#2ec5e8') },
-        uDeep: { value: new Color('#1b74c9') },
-        uFog: { value: HORIZON },
-        uCam: { value: [0, 0] },
-        uFogNear: { value: FOG_NEAR },
-        uFogFar: { value: FOG_FAR },
-      },
-      vertexShader: /* glsl */ `
-        varying vec3 vWorld;
-        void main() {
-          vec4 w = modelMatrix * vec4(position, 1.0);
-          vWorld = w.xyz;
-          gl_Position = projectionMatrix * viewMatrix * w;
-        }`,
-      fragmentShader: /* glsl */ `
-        uniform float uTime;
-        uniform vec3 uShallow;
-        uniform vec3 uDeep;
-        uniform vec3 uFog;
-        uniform vec2 uCam;
-        uniform float uFogNear;
-        uniform float uFogFar;
-        varying vec3 vWorld;
-        void main() {
-          float d = distance(vWorld.xz, uCam);
-          float ripple = sin(vWorld.x * 0.21 + uTime * 1.4) * 0.5 + sin(vWorld.z * 0.17 - uTime * 1.1) * 0.5;
-          float glint = smoothstep(0.82, 1.0, sin(vWorld.x * 0.55 + uTime * 1.9) * sin(vWorld.z * 0.47 - uTime * 1.6));
-          vec3 col = mix(uShallow, uDeep, clamp(d / 380.0, 0.0, 1.0));
-          col += ripple * 0.025 + glint * 0.22;
-          col = mix(col, uFog, smoothstep(uFogNear, uFogFar, d));
-          gl_FragColor = vec4(col, 1.0);
-          #include <colorspace_fragment>
-        }`,
-    });
-    this.sea = new Mesh(new PlaneGeometry(1400, 1400), this.seaMaterial);
-    this.sea.rotation.x = -Math.PI / 2;
-    scene.add(this.sea);
+    scene.fog = this.fog;
+    scene.add(this.hemi, this.sun, this.sun.target);
+    this.sun.position.copy(SUN_DIR).multiplyScalar(70);
+    this.setMood(0);
   }
 
-  update(time: number, camera: Vector3): void {
-    this.seaMaterial.uniforms.uTime.value = time;
-    this.seaMaterial.uniforms.uCam.value = [camera.x, camera.z];
-    this.sea.position.set(camera.x, 0, camera.z);
-    this.sky.position.copy(camera);
+  /** 0 = sunny, 1 = storm. */
+  setMood(t: number): void {
+    if (Math.abs(t - this.mood) < 1e-4) return;
+    this.mood = t;
+    this.fog.color.copy(SKY.horizon).lerp(SKY.stormHorizon, t);
+    this.sun.intensity = SUN_INTENSITY * (1 - 0.4 * t);
+    this.hemi.intensity = HEMI_INTENSITY * (1 - 0.15 * t);
+    this.fog.color.getRGB(RGB_TMP, SRGBColorSpace);
+    this.fogOut.set(RGB_TMP.r, RGB_TMP.g, RGB_TMP.b);
   }
 }
