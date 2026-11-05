@@ -33,6 +33,7 @@ export class ColdOpen {
     for (let i = 0; i < 4; i++) b.box(-3 + i * 0.1, 3.6 + i * 1 + 0.5, 1, 0.45, 1.05, 0.45, i % 2 ? '#B07A3A' : '#8A5A28');
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) b.box(-2.6 + dx, 8, 1 + dz, dx ? 1.8 : 0.5, 0.15, dz ? 1.8 : 0.5, '#3FCB4B');
     this.island = new Mesh(b.build(), islandMaterial(false));
+    this.island.scale.setScalar(1.6);
     this.group.add(this.island, this.wave);
     this.group.visible = false;
     parent.add(this.group);
@@ -61,7 +62,7 @@ export class ColdOpen {
     const t = this.t;
     let shake = false;
     const w = this.wave;
-    w.scale.set(0.16, 0.4, 0.4);
+    w.scale.set(0.24, 0.62, 0.6);
     if (t < 0.6) {
       this.mat.uniforms.uGrow.value = 0.15 + 0.85 * easeOut(t / 0.6);
       w.position.z = -16;
@@ -72,9 +73,9 @@ export class ColdOpen {
       this.sprayT += dt;
       while (this.sprayT > 0.03) {
         this.sprayT -= 0.03;
-        tmp.set((Math.random() - 0.5) * 30, 4 + Math.random() * 3, w.position.z + 2).applyMatrix4(this.group.matrixWorld);
-        this.spray.emit(tmp.x, tmp.y, tmp.z, 0, 3 + Math.random() * 3, 0, 4 + Math.random() * 3, 0.9);
-        this.spray.emit(tmp.x + 3, tmp.y + 1, tmp.z, 0, 4, 0, 5, 1.0);
+        tmp.set((Math.random() - 0.5) * 45, 6 + Math.random() * 4, w.position.z + 2).applyMatrix4(this.group.matrixWorld);
+        this.spray.emit(tmp.x, tmp.y, tmp.z, 0, 3 + Math.random() * 3, 0, 7 + Math.random() * 4, 0.9);
+        this.spray.emit(tmp.x + 3, tmp.y + 1, tmp.z, 0, 4, 0, 8, 1.0);
       }
     } else if (t < 3) {
       const k = (t - 1.4) / 1.6;

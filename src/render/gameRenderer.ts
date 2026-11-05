@@ -24,7 +24,7 @@ import { Character } from './character';
 import { Clouds } from './clouds';
 import { ColdOpen } from './coldOpen';
 import { makeCreatureMesh } from './creatureMesh';
-import { CreatureVisuals } from './creatures';
+import { CreatureVisuals, type CreatureFrame } from './creatures';
 import { Lighting } from './environment';
 import { GameplayObjects } from './gameplayObjects';
 import { Guides } from './guides';
@@ -129,6 +129,16 @@ export class GameRenderer {
   private wasSplashed = false;
   /** Runtime DPR adaptation (§6.1). Sandbox screenshots turn it off. */
   adaptiveDpr = true;
+  // Per-frame parameter objects, reused (no allocation in render()).
+  private readonly charCtx = { time: 0, splashed: false, carrying: false, panic: false, reduceMotion: false };
+  private readonly worldFrame = { time: 0, dt: 0, targetId: -1, danger: 0, player: new Vector3(), shopArrow: false, reach: 0 };
+  private creatureFrame: CreatureFrame | null = null;
+  private readonly hookPos = (id: number, out: Vector3): Vector3 | null => {
+    const anchors = this.course?.anchors;
+    if (!anchors) return null;
+    for (const a of anchors) if (a.id === id) return out.copy(a.pos);
+    return null;
+  };
 
   constructor(canvas: HTMLCanvasElement, private readonly deps: GameRendererDeps) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -501,7 +511,13 @@ export class GameRenderer {
     const splashed = sim.splashTime > 0;
     if (player.mode !== 'ground') this.airMinVy = Math.min(this.airMinVy, player.vel.y);
     const panic = wave.phase === 'surge' && player.pos.z - wave.frontZ < 40 && player.pos.z - wave.frontZ > -2;
-    this.character.update(dt, player, { time: t, splashed, carrying: state.carried.length > 0, panic, reduceMotion: reduce });
+    const cc = this.charCtx;
+    cc.time = t;
+    cc.splashed = splashed;
+    cc.carrying = state.carried.length > 0;
+    cc.panic = panic;
+    cc.reduceMotion = reduce;
+    this.character.update(dt, player, cc);
     this.character.root.updateMatrixWorld(true);
     if (splashed && !this.wasSplashed) this.ribbon.reset();
     this.wasSplashed = splashed;
@@ -538,18 +554,17 @@ export class GameRenderer {
       const y = gy < 0.5 ? waveHeight(player.pos.x, player.pos.z, t) : gy;
       this.blobs.add(player.pos.x, y, player.pos.z, player.pos.y - y, 1.4);
     }
+    const cf = (this.creatureFrame ??= { time: 0, dt: 0, camera: this.camera, player: player.pos, reduceMotion: false, outlineRange: 0, billboardRange: 0, beatPhase: NaN, shadows: false });
+    cf.time = t;
+    cf.dt = dt;
+    cf.player = player.pos;
+    cf.reduceMotion = reduce;
+    cf.outlineRange = q.creatureOutlines ? q.outlineRange : 0;
+    cf.billboardRange = q.billboardRange;
+    cf.beatPhase = f.beatPhase;
+    cf.shadows = q.shadows;
     this.creatures.update(
-      {
-        time: t,
-        dt,
-        camera: this.camera,
-        player: player.pos,
-        reduceMotion: reduce,
-        outlineRange: q.creatureOutlines ? q.outlineRange : 0,
-        billboardRange: q.billboardRange,
-        beatPhase: f.beatPhase,
-        shadows: q.shadows,
-      },
+      cf,
       sim.wild,
       sim.time,
       state.carried,
@@ -564,17 +579,22 @@ export class GameRenderer {
 
     // World, objects, wave.
     const hookTag = f.guides.hookTag;
-    this.world.update({ time: t, dt, targetId: !swinging && !splashed && player.target ? player.target.id : hookTag ? hookTag.anchorId : -1, danger: this.danger, player: player.pos, shopArrow: this.shopArrow, reach: this.reach });
+    const wf = this.worldFrame;
+    wf.time = t;
+    wf.dt = dt;
+    wf.targetId = !swinging && !splashed && player.target ? player.target.id : hookTag ? hookTag.anchorId : -1;
+    wf.danger = this.danger;
+    wf.player.copy(player.pos);
+    wf.shopArrow = this.shopArrow;
+    wf.reach = this.reach;
+    this.world.update(wf);
     this.objects.update(t, dt, sim, sim.time, this.particles, player.pos);
     this.props?.update(dt, player.pos, this.particles);
     this.wave.update(dt, wave, player.pos.x, this.camera.quaternion, this.particles, WAVE.warning);
 
     // Guides and the predicted landing ring.
     const land = player.mode === 'air' && !splashed ? this.predictLanding(player.pos, player.vel) : null;
-    this.guides.update(f.guides ?? NO_GUIDES, t, land, (id, out) => {
-      const a = this.course!.anchors.find((x) => x.id === id);
-      return a ? out.copy(a.pos) : null;
-    }, this.camera.quaternion);
+    this.guides.update(f.guides ?? NO_GUIDES, t, land, this.hookPos, this.camera.quaternion);
 
     // Cold open.
     if (this.coldOpenPending) {

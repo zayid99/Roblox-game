@@ -315,6 +315,7 @@ export class World {
   private plaqueMesh: Mesh | null = null;
   private readonly plaqueMat: MeshBasicMaterial;
   private lastReach = -1;
+  private readonly animated: InstancedMesh[] = [];
   private lastCount = -1;
 
   constructor(
@@ -524,6 +525,7 @@ export class World {
     this.balloons.castShadow = true;
     for (const im of [this.hooks, this.hookOutline, this.chains, this.balloons]) {
       if (!im) continue;
+      this.animated.push(im);
       im.instanceMatrix.setUsage(DynamicDrawUsage);
       im.frustumCulled = false;
       this.group.add(im);
@@ -669,7 +671,7 @@ export class World {
         colorsDirty = true;
       }
     }
-    for (const im of [this.hooks, this.hookOutline, this.chains, this.balloons]) if (im) im.instanceMatrix.needsUpdate = true;
+    for (const im of this.animated) im.instanceMatrix.needsUpdate = true;
     if (colorsDirty && this.hooks.instanceColor) this.hooks.instanceColor.needsUpdate = true;
 
     // Locked-hook reach chips (3 nearest within 30 m).

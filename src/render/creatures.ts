@@ -330,9 +330,9 @@ export class CreatureVisuals {
   private readonly accel = new Vector3();
 
   // Base.
-  private readonly base: ({ key: string; a: Anim; fly: { from: Vector3; t: number; delay: number } | null; pulse: number } | null)[] = [];
+  private readonly base: ({ key: string; ref: CreatureRef; a: Anim; fly: { from: Vector3; t: number; delay: number } | null; pulse: number } | null)[] = [];
   readonly labels = new PedestalLabels();
-  private labelKey = '';
+  private labelMult = -1;
   private coinTimer = 0;
 
   constructor(
@@ -617,13 +617,19 @@ export class CreatureVisuals {
   private updateBase(f: CreatureFrame, slots: readonly (CreatureRef | null)[], multiplier: number, slotCount: number): void {
     const t = f.time;
     const n = Math.min(MAX_PEDESTALS, slots.length, slotCount);
-    let labelKey = `${multiplier}`;
+    let changed = multiplier !== this.labelMult;
+    this.labelMult = multiplier;
     for (let i = 0; i < Math.max(n, this.base.length); i++) {
       const c = i < n ? slots[i] : null;
-      const key = c ? `${c.speciesId}:${c.mutation}` : '';
-      labelKey += `|${key}`;
       const cur = this.base[i] ?? null;
-      if ((cur?.key ?? '') === key) continue;
+      // Same object: nothing changed (no string keys per frame).
+      if ((cur?.ref ?? null) === c) continue;
+      const key = c ? `${c.speciesId}:${c.mutation}` : '';
+      if ((cur?.key ?? '') === key) {
+        if (cur && c) cur.ref = c;
+        continue;
+      }
+      changed = true;
       if (cur) {
         this.group.remove(cur.a.body);
         cur.a.body.material.dispose();
@@ -650,7 +656,7 @@ export class CreatureVisuals {
       }
       a.body.castShadow = f.shadows;
       a.yaw = a.yawTarget = Math.PI + Math.atan2(-p.x, 12) * 0.4;
-      this.base[i] = { key, a, fly, pulse: -1 };
+      this.base[i] = { key, ref: c, a, fly, pulse: -1 };
     }
     // Sold or unmatched deliveries poof.
     for (const d of this.delivering) {
@@ -714,8 +720,7 @@ export class CreatureVisuals {
       }
     }
 
-    if (labelKey !== this.labelKey) {
-      this.labelKey = labelKey;
+    if (changed) {
       const entries: { pos: Vector3; c: CreatureRef; income: string }[] = [];
       for (let i = 0; i < this.base.length; i++) {
         const b = this.base[i];
