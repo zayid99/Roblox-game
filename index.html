@@ -4,20 +4,68 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="description" content="Swing out over the sea, grab weird creatures, and get home before the wave hits." />
+    <meta name="theme-color" content="#0B2740" />
     <title>Swing or Splash</title>
     <!--
       CrazyGames Full Launch: uncomment the SDK tag below. The game works without it
       (Basic Launch), and src/platform/crazygames.ts picks it up automatically when present.
       <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
     -->
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; height: 100%; overflow: hidden; background: #0B2740;
+        user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+        touch-action: none; overscroll-behavior: none;
+      }
+      #app { position: fixed; inset: 0; }
+      #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+      #ui { position: absolute; inset: 0; pointer-events: none; }
+
+      /* Loading screen (spec §10.7): navy, logo, rope progress bar. */
+      #loading {
+        position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 26px; background: radial-gradient(circle at 50% 40%, #123A5C, #0B2740 70%); transition: opacity 300ms ease-out;
+      }
+      #loading.done { opacity: 0; pointer-events: none; }
+      #loading .ld-logo { width: min(520px, 80vw); aspect-ratio: 2 / 1; opacity: 0; transition: opacity 200ms; }
+      #loading .ld-logo.on { opacity: 1; }
+      #loading .ld-logo svg { width: 100%; height: auto; display: block; }
+      #loading .ld-bar {
+        position: relative; width: 320px; height: 22px; border-radius: 999px; border: 3px solid #1B1736;
+        background: #123A5C; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.25);
+      }
+      #loading .ld-fill {
+        position: absolute; left: 0; top: 0; bottom: 0; width: 4%; border-radius: 999px; overflow: hidden;
+        background: repeating-linear-gradient(-55deg, #E8B04A 0 6px, #B97E2A 6px 11px, #7A4F14 11px 14px);
+        box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+        transition: width 260ms ease-out;
+      }
+      #loading .ld-knot {
+        position: absolute; top: 50%; left: 4%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%;
+        border: 3px solid #1B1736; background: radial-gradient(circle at 38% 32%, #FFE08A, #E8B04A 45%, #B97E2A 75%, #7A4F14);
+        transition: left 260ms ease-out;
+      }
+      #loading .ld-text { font: 600 16px 'Fredoka', system-ui, sans-serif; color: rgba(255, 255, 255, 0.7); letter-spacing: 0.04em; }
+      #loading .ld-error { max-width: 80vw; text-align: center; font: 600 18px 'Fredoka', system-ui, sans-serif; color: #fff; }
+      @media (max-width: 500px), (max-height: 500px) {
+        #loading .ld-bar { width: 240px; height: 18px; }
+        #loading .ld-knot { width: 24px; height: 24px; margin: -12px 0 0 -12px; }
+        #loading .ld-logo { width: min(420px, 70vw); }
+      }
+      @media (max-height: 420px) {
+        #loading .ld-logo { width: min(360px, 60vw); }
+      }
+    </style>
   </head>
   <body>
     <div id="app">
       <canvas id="game" tabindex="0"></canvas>
       <div id="ui"></div>
       <div id="loading">
-        <div class="logo">Swing <span>or</span> Splash</div>
-        <div class="bar"><i></i></div>
+        <div class="ld-logo"></div>
+        <div class="ld-bar"><div class="ld-fill"></div><div class="ld-knot"></div></div>
+        <div class="ld-text">Loading</div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
