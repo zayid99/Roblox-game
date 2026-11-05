@@ -19,6 +19,9 @@ interface CrazySdk {
     loadingStart?(): void;
     loadingStop?(): void;
     happytime(): void;
+    /** Platform-wide settings (muteAudio overrides the in-game sound toggle, §8.7). */
+    settings?: { muteAudio?: boolean; disableChat?: boolean };
+    addSettingsChangeListener?(listener: (settings: { muteAudio?: boolean }) => void): void;
   };
   ad: {
     requestAd(type: AdType, callbacks: AdCallbacks): void;
@@ -38,16 +41,36 @@ declare global {
 export class Platform {
   private sdk: CrazySdk | null = null;
   private playing = false;
+  private muted = false;
+  /** Called when the platform's muteAudio setting changes. */
+  onMuteChange: ((muted: boolean) => void) | null = null;
 
   async init(): Promise<void> {
+    // ?muteAudio=true simulates the platform's mute setting (testing without the SDK).
+    if (new URLSearchParams(location.search).get('muteAudio') === 'true') this.muted = true;
     const sdk = window.CrazyGames?.SDK;
     if (!sdk) return;
     try {
       await sdk.init();
       this.sdk = sdk;
+      if (sdk.game.settings?.muteAudio) this.muted = true;
+      sdk.game.addSettingsChangeListener?.((s) => {
+        this.muted = !!s.muteAudio;
+        this.onMuteChange?.(this.muted);
+      });
     } catch (err) {
       console.warn('CrazyGames SDK init failed, running without it.', err);
     }
+  }
+
+  /** The platform's muteAudio setting (§8.7). */
+  get platformMuted(): boolean {
+    return this.muted;
+  }
+
+  /** True when the SDK's data module stores saves (in addition to the localStorage mirror). */
+  get hasDataModule(): boolean {
+    return !!this.sdk?.data;
   }
 
   get hasSdk(): boolean {
