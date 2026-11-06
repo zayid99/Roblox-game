@@ -17,6 +17,16 @@ export interface RevealHooks {
   multiplier(): number;
 }
 
+/** Optional copy for a reveal that isn't a first find (the Hatchery). */
+export interface RevealOpts {
+  /** Sticker text instead of NEW. */
+  stamp?: string;
+  /** Chip text instead of "Added to Index n/m". */
+  chip?: string;
+  /** Banner sub instead of "<Rarity> catch". */
+  sub?: string;
+}
+
 export function rarityPill(r: number): string {
   return `<span class="rpill" data-r="${r}"><b>${RARITY_LETTER[r]}</b>${RARITIES[r].name.toUpperCase()}</span>`;
 }
@@ -34,8 +44,8 @@ export class Reveal {
     this.el = el('div', 'reveal-layer');
   }
 
-  play(c: CreatureRef, mode: 'compact' | 'big', indexCount: string): Promise<void> {
-    if (mode === 'big') return this.big(c, indexCount);
+  play(c: CreatureRef, mode: 'compact' | 'big', indexCount: string, opts: RevealOpts = {}): Promise<void> {
+    if (mode === 'big') return this.big(c, indexCount, opts);
     return new Promise((resolve) => {
       this.compactQueue.push(() => this.compact(c, indexCount).then(resolve));
       this.pumpCompact();
@@ -78,7 +88,7 @@ export class Reveal {
     });
   }
 
-  private big(c: CreatureRef, indexCount: string): Promise<void> {
+  private big(c: CreatureRef, indexCount: string, opts: RevealOpts = {}): Promise<void> {
     const sp = getSpecies(c.speciesId);
     const r = sp.rarity;
     const hue = RARITIES[r].color;
@@ -89,11 +99,11 @@ export class Reveal {
     wrap.innerHTML =
       `<div class="rb-dim"></div><div class="rb-burst"></div>` +
       `<div class="rb-por">${porthole(portraitImg(this.deps, c), 160)}</div>` +
-      `<div class="rb-tags"><span class="new-st">NEW</span><span class="chip">${icon('index', 22)}Added to Index ${escapeHtml(indexCount)}</span></div>`;
+      `<div class="rb-tags"><span class="new-st">${escapeHtml(opts.stamp ?? 'NEW')}</span><span class="chip">${icon('index', 22)}${escapeHtml(opts.chip ?? `Added to Index ${indexCount}`)}</span></div>`;
     this.el.appendChild(wrap);
     const confetti = r >= 5 ? 80 : r === 4 ? 60 : 40;
     const t1 = window.setTimeout(() => {
-      this.hooks.banner({ title: sp.name.toUpperCase(), sub: `${RARITIES[r].name} catch`, hue: `r${r}` as BannerSpec['hue'], priority: 'reveal', ms: 1400 });
+      this.hooks.banner({ title: sp.name.toUpperCase(), sub: opts.sub ?? `${RARITIES[r].name} catch`, hue: `r${r}` as BannerSpec['hue'], priority: 'reveal', ms: 1400 });
       this.hooks.confetti(confetti, hue);
       if (r >= 5) this.hooks.flash('#ffffff', 120);
     }, 300);

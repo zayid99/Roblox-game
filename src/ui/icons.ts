@@ -373,6 +373,42 @@ const DEFS: Record<IconId, IconDef> = {
   thumb: {
     opacity: 0.75,
     parts: [{ d: rr(12, 5, 24, 36, 12), fill: '#FFFFFF', shade: '#D6DCE4', off: [-2, -2.5], deco: `<path d="${rr(17, 8, 14, 12, 6)}" fill="#EEF2F7" stroke="#A9B3C1" stroke-width="1.6"/>` }],
+  },  egg: {
+    parts: [
+      {
+        d: 'M24 3.5C33 3.5 39.5 16 39.5 27C39.5 37 32.5 42.5 24 42.5C15.5 42.5 8.5 37 8.5 27C8.5 16 15 3.5 24 3.5Z',
+        fill: '#FFF6E0',
+        shade: '#E9CF98',
+        hl: [18, 13, 3.6, 6, 20],
+        deco: `<circle cx="29" cy="15" r="3.4" fill="#2EE6C9"/><circle cx="17" cy="26" r="3" fill="#FF8C3A"/><circle cx="31" cy="29" r="4" fill="#9B5CFF"/><circle cx="22" cy="35" r="2.2" fill="#2EE6C9"/>`,
+      },
+      {
+        d: 'M3.5 32Q24 40 44.5 32L41.5 42Q24 50 6.5 42Z',
+        fill: '#E9B44C',
+        shade: '#B97E2A',
+        off: [-1.5, -2.5],
+        deco: `<path d="M9 37L15 42M17 38L21 44M27 38L24 44M35 37L31 43M41 36L38 41" stroke="#B97E2A" stroke-width="1.8" stroke-linecap="round"/>`,
+      },
+    ],
+    det: 'M24 8.5L21 13L25.5 15.5L22.5 19.5',
+  },
+  buddy: {
+    parts: [
+      {
+        d: 'M9 42.5C3.5 42.5 3.5 35.5 7 31C5 20 12 11 23 11C34 11 41 20 39 31C42.5 35.5 42.5 42.5 37 42.5Q34 39.5 30 42.5Q26.5 39.5 23 42.5Q19.5 39.5 16 42.5Q12.5 39.5 9 42.5Z',
+        fill: '#2EE6C9',
+        shade: '#14B39C',
+        hl: [16, 17, 5, 2.6, -30],
+      },
+      {
+        d: 'M37.5 5.5C35 1.5 29 3 29.5 8C30 12 35 14 37.5 17.5C40 14 45 12 45.5 8C46 3 40 1.5 37.5 5.5Z',
+        fill: '#FF4D5E',
+        shade: '#D9233A',
+        off: [-1.5, -2],
+        hl: [33, 7, 2, 1.3, -30],
+      },
+    ],
+    top: `<circle cx="17" cy="26" r="4" fill="#fff" stroke="${INK}" stroke-width="2"/><circle cx="28" cy="26" r="4" fill="#fff" stroke="${INK}" stroke-width="2"/><circle cx="18" cy="27" r="1.7" fill="${INK}"/><circle cx="29" cy="27" r="1.7" fill="${INK}"/><path d="M20 33Q22.5 35.5 25 33" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>`,
   },
 };
 

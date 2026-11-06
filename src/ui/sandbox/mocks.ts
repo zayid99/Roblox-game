@@ -5,6 +5,36 @@ import type {
 import { RARITIES, SPECIES, creatureIncome, getSpecies, type CreatureRef } from '../../game/creatures';
 import { UPGRADES, UPGRADE_ORDER, formatCash, rebirthCost, rebirthMultiplier, upgradeCost, type UpgradeKey } from '../../game/economy';
 import { ZONES } from '../../game/zones';
+import type { BuddyOption, HatchOutcome, HatcheryView } from '../../game/hatchery';
+
+// Hatchery mock (static; the real view is game/hatchery.ts buildHatcheryView).
+const EGG_MOCK: [string, string, number, [string, string]][] = [
+  ['Shallows Egg', 'Shallows', 1000, ['#FFF3D6', '#7ED957']], ['Reef Egg', 'Coral Reef', 2500, ['#FFD1DC', '#FF7A59']],
+  ['Lagoon Egg', 'Lagoon', 8000, ['#C9F5EE', '#2EB8A6']], ['Storm Egg', 'Stormy Seas', 25000, ['#C3CEDD', '#3B4A66']],
+  ['Kraken Egg', 'Kraken Deep', 100000, ['#D2C2FF', '#6A3FD1']], ['Volcano Egg', 'Volcano Bay', 400000, ['#FFB08A', '#B8361A']],
+  ['Secret Egg', 'Secret Reef', 1500000, ['#3A2A7E', '#5EF3FF']],
+];
+const hatchMock = { bestZone: 3, hatched: 0, buddy: { speciesId: 'crab_dj', mutation: 1 } as CreatureRef | null };
+const BUDDY_BASE: CreatureRef[] = [{ speciesId: 'banana_shark', mutation: 0 }, { speciesId: 'crab_dj', mutation: 1 }, { speciesId: 'toastopus', mutation: 0 }];
+function buddyOpt(c: CreatureRef): BuddyOption {
+  const sp = getSpecies(c.speciesId);
+  const eq = !!hatchMock.buddy && hatchMock.buddy.speciesId === c.speciesId && hatchMock.buddy.mutation === c.mutation;
+  return { ref: c, name: sp.name, rarity: sp.rarity, income: creatureIncome(c), bonus: 0.05 * (sp.rarity + 1), equipped: eq };
+}
+function hatchView(cash: number): HatcheryView {
+  const options = BUDDY_BASE.map(buddyOpt);
+  return {
+    cash, hatched: hatchMock.hatched,
+    eggs: EGG_MOCK.map(([name, zoneName, price, colors], zone) => ({
+      zone, name, zoneName, rarity: zone, price, colors, unlocked: zone <= hatchMock.bestZone, affordable: cash >= price,
+      odds: zone < 6 ? [{ rarity: zone, p: 0.9 }, { rarity: zone + 1, p: 0.1 }] : [{ rarity: 6, p: 1 }],
+      species: SPECIES.filter((sp) => sp.rarity === zone).map((sp) => ({ id: sp.id, name: sp.name, found: sp.rarity < 2 })),
+    })),
+    mutations: [{ mutation: 1, name: 'Gold', p: 0.04 }, { mutation: 2, name: 'Diamond', p: 0.01 }, { mutation: 3, name: 'Rainbow', p: 0.002 }],
+    buddy: options.find((o) => o.equipped) ?? null,
+    options,
+  };
+}
 
 // ---------------------------------------------------------------- portraits
 const cache = new Map<string, string>();
@@ -147,6 +177,7 @@ export function makeHudView(s: MockState, layout: HudView['layout'], touch: bool
       free: { visible: true, badge: 3, arrow: false, wiggle: true, timer: '2:41' },
       index: { visible: true, badge: 2, arrow: false, wiggle: false },
       rebirth: { visible: true, badge: '!', arrow: false, wiggle: false },
+      hatchery: { visible: true, badge: null, arrow: false, wiggle: false },
     },
     tracker: {
       title: 'FIRST VOYAGE', count: '7/12',
@@ -244,6 +275,7 @@ export function makePanelData(s: MockState): PanelData {
       pendingGifts: [{ cash: 900 }, { pearls: 10 }],
       canDouble: true,
     }),
+    hatchery: () => hatchView(s.cash),
   };
 }
 
@@ -283,6 +315,18 @@ export function makeActions(s: MockState, log: (msg: string) => void, hooks: { p
     toggleMute() { s.settings.muted = !s.settings.muted; log('toggleMute'); },
     skipTutorial() { log('skipTutorial'); },
     panelChanged(k, t) { hooks.panelChanged(k, t); },
+    hatchEgg(zone) {
+      const [name, , price] = EGG_MOCK[zone] ?? [];
+      if (!name || price === undefined || s.cash < price || zone > hatchMock.bestZone) return null;
+      s.cash -= price;
+      const pool = SPECIES.filter((sp) => sp.rarity === zone);
+      const ref = { speciesId: pool[Math.floor(Math.random() * pool.length)].id, mutation: Math.random() < 0.2 ? 1 : 0 };
+      hatchMock.hatched++;
+      const out: HatchOutcome = { ref, zone, eggName: name, isNewSpecies: Math.random() < 0.5, isNewMutation: false, result: { placed: [ref], sold: [] } };
+      log(`hatchEgg ${zone} ${ref.speciesId}`);
+      return out;
+    },
+    setBuddy(c) { hatchMock.buddy = c; log(`setBuddy ${c ? c.speciesId : 'none'}`); },
   };
 }
 

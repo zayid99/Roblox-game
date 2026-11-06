@@ -1,6 +1,6 @@
 // Tiny DOM helpers shared by every UI part (spec §2.1, C1).
 
-export type UiSoundId = 'ui.click' | 'ui.hover' | 'ui.open' | 'ui.close' | 'ui.tab' | 'ui.denied' | 'toast' | 'coinTick';
+export type UiSoundId = 'ui.click' | 'ui.hover' | 'ui.open' | 'ui.close' | 'ui.tab' | 'ui.denied' | 'toast' | 'coinTick' | 'eggWobble' | 'eggCrack';
 type SoundFn = (id: UiSoundId, i?: number) => void;
 
 let soundFn: SoundFn = () => {};

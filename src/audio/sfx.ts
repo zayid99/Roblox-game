@@ -9,13 +9,13 @@ export type SfxId =
   | 'ui.click' | 'ui.hover' | 'ui.open' | 'ui.close' | 'ui.tab' | 'ui.denied' | 'toast' | 'jump' | 'doubleJump' | 'grab' | 'release'
   | 'perfect' | 'perfectWindow' | 'land' | 'pad' | 'bounce' | 'geyser' | 'collect' | 'coinTick' | 'deliver' | 'buy' | 'maxed' | 'claim' | 'splash' | 'sea'
   | 'horn' | 'tick' | 'zone' | 'chainStep' | 'chainEnd' | 'chainLost' | 'closeCall' | 'giftReady' | 'reveal' | 'rebirth'
-  | 'tutorialStep' | 'tutorialDone' | 'slowIn' | 'slowOut';
+  | 'tutorialStep' | 'tutorialDone' | 'slowIn' | 'slowOut' | 'eggWobble' | 'eggCrack';
 
 export const SFX_IDS: readonly SfxId[] = [
   'ui.click', 'ui.hover', 'ui.open', 'ui.close', 'ui.tab', 'ui.denied', 'toast', 'jump', 'doubleJump', 'grab', 'release',
   'perfect', 'perfectWindow', 'land', 'pad', 'bounce', 'geyser', 'collect', 'coinTick', 'deliver', 'buy', 'maxed', 'claim', 'splash', 'sea',
   'horn', 'tick', 'zone', 'chainStep', 'chainEnd', 'chainLost', 'closeCall', 'giftReady', 'reveal', 'rebirth',
-  'tutorialStep', 'tutorialDone', 'slowIn', 'slowOut',
+  'tutorialStep', 'tutorialDone', 'slowIn', 'slowOut', 'eggWobble', 'eggCrack',
 ];
 
 export interface PlayOpts {
@@ -332,6 +332,21 @@ export class SfxBank {
         break;
       case 'slowOut':
         this.noise(t, { type: 'bandpass', f0: 600, f1: 2600, q: 1.2, dur: 0.2, peak: 0.12, attack: 0.03 });
+        break;
+      case 'eggWobble': {
+        // Hatchery: a hollow wooden knock that climbs with each wobble (i = 0, 1, 2).
+        const k = Math.max(0, Math.min(3, o.i ?? 0));
+        this.wood(t, 0.12 + k * 0.02, 0.85 + k * 0.12);
+        this.tone(t, { type: 'triangle', f0: 260 + k * 60, f1: 180 + k * 60, glide: 0.08, dur: 0.1, peak: 0.06 });
+        break;
+      }
+      case 'eggCrack':
+        // Shell snap: a bright noise crack, a pop and a little rising sparkle.
+        e.duckMusic(DUCK5, t);
+        this.noise(t, { type: 'highpass', f0: 2400, dur: 0.05, peak: 0.22, attack: 0.001, tau: 0.012 });
+        this.noise(t + 0.02, { type: 'bandpass', f0: 1400, f1: 500, glide: 0.1, q: 2, dur: 0.12, peak: 0.12, attack: 0.002 });
+        this.tone(t, { type: 'sine', f0: 500, f1: 1200, glide: 0.08, dur: 0.12, peak: 0.12 });
+        [89, 93, 96].forEach((m, k) => this.glock(t + 0.06 + k * 0.05, m, 0.05));
         break;
     }
   }

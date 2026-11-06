@@ -16,6 +16,7 @@ import { ensureIconSprite, icon } from './icons';
 import { LayoutWatcher } from './layout';
 import type { PanelEnv } from './panels/env';
 import { FreePanel } from './panels/free';
+import { HatcheryPanel } from './panels/hatchery';
 import { IndexPanel } from './panels/index';
 import { PanelShell, type PanelContent } from './panels/panel';
 import { SettingsPanel } from './panels/settings';
@@ -34,7 +35,7 @@ import { ToastsPart } from './parts/toasts';
 import { TouchPart } from './parts/touch';
 import { TrackerPart } from './parts/tracker';
 import { WaveMeterPart } from './parts/waveMeter';
-import { Reveal } from './reveal';
+import { Reveal, type RevealOpts } from './reveal';
 import type { HudCtx, HudDeps } from './types';
 
 export type { HudDeps } from './types';
@@ -43,8 +44,8 @@ export { icon, iconSvg } from './icons';
 export { logoSvg } from './logo';
 export type { CourseLayout } from './parts/courseBar';
 
-const PANEL_HUE: Record<PanelKind, 'grass' | 'grape' | 'sun' | 'sky'> = { shop: 'grass', index: 'grape', free: 'sun', settings: 'sky', welcome: 'grass' };
-const PANEL_TITLE: Record<PanelKind, string> = { shop: 'SHOP', index: 'INDEX', free: 'FREE', settings: 'SETTINGS', welcome: 'WELCOME BACK' };
+const PANEL_HUE: Record<PanelKind, 'grass' | 'grape' | 'sun' | 'sky' | 'teal'> = { shop: 'grass', index: 'grape', free: 'sun', settings: 'sky', welcome: 'grass', hatchery: 'teal' };
+const PANEL_TITLE: Record<PanelKind, string> = { shop: 'SHOP', index: 'INDEX', free: 'FREE', settings: 'SETTINGS', welcome: 'WELCOME BACK', hatchery: 'HATCHERY' };
 const HIDEABLE: HudPart[] = ['cash', 'pearls', 'rail', 'wave', 'course', 'tracker', 'carry', 'chain', 'topRight'];
 
 export class Hud {
@@ -130,6 +131,7 @@ export class Hud {
       reduce: () => this.reduce,
       toast: (t) => this.toast(t),
       refresh: () => this.refreshPanel(),
+      reveal: (c, mode, indexCount, opts) => this.reveal(c, mode, indexCount, opts),
     };
 
     // ----- HUD parts -----
@@ -313,8 +315,8 @@ export class Hud {
     });
   }
 
-  reveal(c: CreatureRef, mode: 'compact' | 'big', indexCount: string): Promise<void> {
-    return this.revealFx.play(c, mode, indexCount);
+  reveal(c: CreatureRef, mode: 'compact' | 'big', indexCount: string, opts?: RevealOpts): Promise<void> {
+    return this.revealFx.play(c, mode, indexCount, opts);
   }
 
   confetti(at: ScreenPt | 'center', count: number, hue?: string): void {
@@ -378,8 +380,12 @@ export class Hud {
       case 'welcome':
         this.content = new WelcomePanel(shell, this.env);
         break;
+      case 'hatchery':
+        this.content = new HatcheryPanel(shell, this.env, tab === 'buddy' ? 'buddy' : 'eggs');
+        maybeCoach(this.deps, shell.el, 'coach:hatchery');
+        break;
     }
-    if (kind !== 'shop' && kind !== 'free') this.deps.actions.panelChanged(kind);
+    if (kind !== 'shop' && kind !== 'free' && kind !== 'hatchery') this.deps.actions.panelChanged(kind);
     if (this.focus) this.content?.setFocus?.(this.focus);
   }
 

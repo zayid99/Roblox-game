@@ -399,6 +399,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
       },
       index: { visible: ftueDone, badge: badges.index ?? null, arrow: false, wiggle: wiggle === 'index' },
       rebirth: { visible: rebirthVisible, badge: badges.rebirth ?? null, arrow: false, wiggle: false },
+      hatchery: { visible: ftueDone, badge: null, arrow: false, wiggle: false },
     };
   }
 

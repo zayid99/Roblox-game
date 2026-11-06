@@ -15,10 +15,12 @@ import { NO_GUIDES } from '../contracts';
 import { PHYS, WAVE } from '../game/config';
 import { groundHeightAt, type Course } from '../game/course';
 import { getSpecies } from '../game/creatures';
+import { activeBuddy } from '../game/hatchery';
 import { UPGRADE_ORDER } from '../game/economy';
 import type { GameSim } from '../game/sim';
 import type { GameState } from '../game/state';
 import { BlobShadows } from './blobShadows';
+import { Buddy, type BuddyFrame } from './buddy';
 import { CameraRig } from './camera';
 import { Character } from './character';
 import { Clouds } from './clouds';
@@ -105,6 +107,7 @@ export class GameRenderer {
   private objects!: GameplayObjects;
   private coldOpen!: ColdOpen;
   private props: Props | null = null;
+  private buddy!: Buddy;
 
   private reduceMotion = false;
   private mood = 0;
@@ -133,6 +136,7 @@ export class GameRenderer {
   private readonly charCtx = { time: 0, splashed: false, carrying: false, panic: false, reduceMotion: false };
   private readonly worldFrame = { time: 0, dt: 0, targetId: -1, danger: 0, player: new Vector3(), shopArrow: false, reach: 0 };
   private creatureFrame: CreatureFrame | null = null;
+  private buddyFrame: BuddyFrame | null = null;
   private readonly hookPos = (id: number, out: Vector3): Vector3 | null => {
     const anchors = this.course?.anchors;
     if (!anchors) return null;
@@ -210,6 +214,8 @@ export class GameRenderer {
     this.objects = new GameplayObjects(course);
     this.coldOpen = new ColdOpen(this.root, this.wave.spray);
     this.props = q.props ? new Props(course, q.edgeLines) : null;
+    this.buddy = new Buddy(this.particles);
+    this.root.add(this.buddy.root);
     if (this.props) this.root.add(this.props.group);
     this.root.add(this.sky.mesh, this.clouds.mesh, this.water.mesh, this.shore, this.world.group, this.blobs.mesh, this.character.root, this.creatures.group, this.objects.group);
     this.lastReachLevel = -1;
@@ -576,6 +582,20 @@ export class GameRenderer {
       state.slotCount,
     );
     this.blobs.end();
+
+    // Buddy pet (Hatchery): follows the player's shoulder.
+    const bf = (this.buddyFrame ??= { dt: 0, time: 0, ref: null, player: player.pos, facing: player.facing, playerVel: player.vel, grounded: false, hidden: false, outline: false, reduceMotion: false });
+    bf.dt = dt;
+    bf.time = t;
+    bf.ref = activeBuddy(state);
+    bf.player = player.pos;
+    bf.facing = player.facing;
+    bf.playerVel = player.vel;
+    bf.grounded = player.mode === 'ground';
+    bf.hidden = splashed;
+    bf.outline = q.creatureOutlines;
+    bf.reduceMotion = reduce;
+    this.buddy.update(bf);
 
     // World, objects, wave.
     const hookTag = f.guides.hookTag;

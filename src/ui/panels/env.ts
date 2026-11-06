@@ -1,4 +1,6 @@
 import type { ScreenPt, ToastSpec } from '../../contracts';
+import type { CreatureRef } from '../../game/creatures';
+import type { RevealOpts } from '../reveal';
 import type { HudCtx } from '../types';
 
 /** Services a panel may use besides data and actions. */
@@ -11,4 +13,6 @@ export interface PanelEnv extends HudCtx {
   toast(t: ToastSpec): void;
   /** Re-pull data for the open panel. */
   refresh(): void;
+  /** The creature reveal card (Hatchery). */
+  reveal(c: CreatureRef, mode: 'compact' | 'big', indexCount: string, opts?: RevealOpts): Promise<void>;
 }

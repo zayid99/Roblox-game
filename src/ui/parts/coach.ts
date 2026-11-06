@@ -9,6 +9,7 @@ export const COACH: Record<string, { icon: IconId; text: string }> = {
   'coach:free': { icon: 'gift', text: 'Come back daily. Rewards stack up.' },
   'coach:locker': { icon: 'locker', text: 'Spend Pearls on ropes. Looks only.' },
   'coach:rebirth': { icon: 'rebirth', text: 'Lose cash and upgrades. Keep Pearls, Index, Locker.' },
+  'coach:hatchery': { icon: 'egg', text: 'Buy eggs for creatures. Pick a Buddy for bonus cash.' },
 };
 
 /** Show the coach card for `id` over `host` once (tracked by deps.coach). */

@@ -1,4 +1,4 @@
-// C2 left rail: Shop, FREE, Index, Rebirth sticker tiles with badges, upgrade arrow and wiggle.
+// C2 left rail: Shop, FREE, Index, Hatchery, Rebirth sticker tiles with badges, upgrade arrow and wiggle.
 import type { PanelKind, PanelTab, RailId, RailTileState } from '../../contracts';
 import { el, pressable, replay, setText, uiSound } from '../dom';
 import { icon } from '../icons';
@@ -6,7 +6,7 @@ import type { HudCtx } from '../types';
 
 interface TileDef {
   id: RailId;
-  icon: 'shop' | 'gift' | 'index' | 'rebirth';
+  icon: 'shop' | 'gift' | 'index' | 'rebirth' | 'egg';
   label: string;
   key: string;
   open: [PanelKind, PanelTab?];
@@ -17,13 +17,14 @@ const TILES: TileDef[] = [
   { id: 'shop', icon: 'shop', label: 'SHOP', key: 'U', open: ['shop', 'upgrades'], tip: 'Shop (U)' },
   { id: 'free', icon: 'gift', label: 'FREE', key: 'G', open: ['free'], tip: 'Free rewards (G)' },
   { id: 'index', icon: 'index', label: 'INDEX', key: 'I', open: ['index'], tip: 'Index (I)' },
+  { id: 'hatchery', icon: 'egg', label: 'EGGS', key: 'H', open: ['hatchery', 'eggs'], tip: 'Hatchery (H)' },
   { id: 'rebirth', icon: 'rebirth', label: 'REBIRTH', key: '', open: ['shop', 'rebirth'], tip: 'Rebirth' },
 ];
 
 /** Badge priority (C2): claimable FREE > Rebirth ready > Index NEW; at most 2 at once. */
-const BADGE_ORDER: RailId[] = ['free', 'rebirth', 'index', 'shop'];
+const BADGE_ORDER: RailId[] = ['free', 'rebirth', 'index', 'shop', 'hatchery'];
 /** Wiggle priority: FREE claimable > Shop affordable > Index NEW; one at a time. */
-const WIGGLE_ORDER: RailId[] = ['free', 'shop', 'index', 'rebirth'];
+const WIGGLE_ORDER: RailId[] = ['free', 'shop', 'index', 'rebirth', 'hatchery'];
 
 interface TileEls {
   root: HTMLButtonElement;
