@@ -12,6 +12,7 @@ export interface SweepResult {
 /** Player is an upright box: feet at (x, y, z), PHYS.height tall, PHYS.halfWidth wide each way. */
 export function playerOverlaps(x: number, y: number, z: number, s: Solid): boolean {
   const hw = PHYS.halfWidth;
+  if (s.off) return false;
   return (
     x - hw < s.max.x &&
     x + hw > s.min.x &&
