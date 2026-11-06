@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { PHYS, SEA_LEVEL } from './config';
-import { anchorPosAt, geyserStateAt, type Anchor, type Buoy, type Geyser, type Pad, type Solid } from './course';
+import { anchorPosAt, geyserStateAt, SPRING, type Anchor, type Buoy, type Geyser, type Pad, type Solid, type Spring } from './course';
 import { moveAndCollide, type SweepResult } from './physics';
 
 export interface PlayerStats {
@@ -30,6 +30,8 @@ export interface PlayerWorld {
   buoys?: readonly Buoy[];
   /** Volcano geysers (§9.0, P1). */
   geysers?: readonly Geyser[];
+  /** Spring coral pads on island tops. */
+  springs?: readonly Spring[];
 }
 
 /** Recorded by release() before the boost, so the sim can rate the release (§9.4). theta is in degrees. */
@@ -127,6 +129,8 @@ export class PlayerSim {
   bouncedOn = -1;
   /** Geyser that launched the player this step, else -1. */
   geyserLaunched = -1;
+  /** Spring coral that launched the player this step, else -1. */
+  sprungOn = -1;
   /** True on the step a swing ended by landing while still attached (no 'release' event). */
   landedAttached = false;
 
@@ -157,6 +161,7 @@ export class PlayerSim {
     this.padId = -1;
     this.bouncedOn = -1;
     this.geyserLaunched = -1;
+    this.sprungOn = -1;
     this.landedAttached = false;
   }
 
@@ -178,6 +183,7 @@ export class PlayerSim {
     this.padId = o.padId;
     this.bouncedOn = o.bouncedOn;
     this.geyserLaunched = o.geyserLaunched;
+    this.sprungOn = o.sprungOn;
     this.landedAttached = o.landedAttached;
     this.ropeGoal = o.ropeGoal;
     this.coyote = o.coyote;
@@ -238,6 +244,7 @@ export class PlayerSim {
     this.padId = -1;
     this.bouncedOn = -1;
     this.geyserLaunched = -1;
+    this.sprungOn = -1;
     this.landedAttached = false;
     this.time += dt;
     this.sinceRelease += dt;
@@ -271,6 +278,7 @@ export class PlayerSim {
     if (this.mode === 'ground') this.checkPads(world.pads);
     if (world.buoys && this.mode === 'air') this.checkBuoys(world.buoys);
     if (world.geysers && this.mode !== 'launch' && this.mode !== 'swing') this.checkGeysers(world.geysers);
+    if (world.springs && (this.mode === 'ground' || (this.mode === 'air' && this.vel.y <= 0))) this.checkSprings(world.springs);
 
     const hs = Math.hypot(this.vel.x, this.vel.z);
     if (hs > 0.5 && this.mode !== 'launch') this.facing.set(this.vel.x / hs, 0, this.vel.z / hs);
@@ -529,6 +537,32 @@ export class PlayerSim {
       this.airTime = 0;
       this.canDoubleJump = true;
       this.bouncedOn = b.id;
+      return;
+    }
+  }
+
+  /**
+   * Stepping on (or dropping onto) a spring coral throws you high into the air, keeping your run a little
+   * faster. You stay in 'air' mode, so you can grab a hook or double jump from the top of the bounce.
+   */
+  private checkSprings(springs: readonly Spring[]): void {
+    for (const sp of springs) {
+      if (Math.abs(this.pos.y - sp.pos.y) > 0.25) continue;
+      const dx = this.pos.x - sp.pos.x;
+      const dz = this.pos.z - sp.pos.z;
+      if (dx * dx + dz * dz > sp.radius * sp.radius) continue;
+      this.pos.y = sp.pos.y + 0.05;
+      this.vel.y = SPRING.launchVel;
+      const hs = Math.hypot(this.vel.x, this.vel.z);
+      if (hs > SPRING.maxHorizontal) {
+        this.vel.x *= SPRING.maxHorizontal / hs;
+        this.vel.z *= SPRING.maxHorizontal / hs;
+      }
+      this.mode = 'air';
+      this.airTime = 0;
+      this.coyote = 0;
+      this.canDoubleJump = true;
+      this.sprungOn = sp.id;
       return;
     }
   }

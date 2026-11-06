@@ -76,7 +76,7 @@ describe('Volcano geysers', () => {
 
 describe('Featured Creature', () => {
   it('is seeded by the week and comes from rarity ≤ 4', () => {
-    expect(FEATURABLE.length).toBe(15);
+    expect(FEATURABLE.length).toBe(25);
     const a = featuredSpeciesFor('2026-W45');
     expect(featuredSpeciesFor('2026-W45')).toBe(a);
     expect(SPECIES.find((s) => s.id === a)!.rarity).toBeLessThanOrEqual(4);
@@ -95,7 +95,8 @@ describe('Featured Creature', () => {
       total++;
       if (c.speciesId === 'banana_shark') featured++;
     }
-    const expected = FEATURED_WEIGHT / (FEATURED_WEIGHT + 2);
+    const pool = SPECIES.filter((s) => s.rarity === 2).length;
+    const expected = FEATURED_WEIGHT / (FEATURED_WEIGHT + pool - 1);
     expect(featured / total).toBeGreaterThan(expected - 0.02);
     expect(featured / total).toBeLessThan(expected + 0.02);
   });

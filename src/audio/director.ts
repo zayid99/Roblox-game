@@ -204,6 +204,12 @@ export class AudioDirector {
       case 'geyser':
         this.play('geyser');
         break;
+      case 'spring':
+        this.play('spring');
+        break;
+      case 'crumble':
+        this.play(e.phase === 'shake' ? 'crumble' : 'stoneSink');
+        break;
       case 'collect': {
         const r = rarityOf(e.creature.speciesId);
         this.play('collect', { rarity: r });

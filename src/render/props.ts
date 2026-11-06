@@ -151,6 +151,7 @@ export class Props {
       if (isl.spawnPoints.some((p) => Math.hypot(p.x - x, p.z - z) < 2.2)) continue;
       if (course.lighthouses.some((lh) => Math.hypot((lh.tower.min.x + lh.tower.max.x) / 2 - x, (lh.tower.min.z + lh.tower.max.z) / 2 - z) < 4)) continue;
       if (course.pads.some((p) => Math.hypot((p.min.x + p.max.x) / 2 - x, (p.min.z + p.max.z) / 2 - z) < 3)) continue;
+      if ((course.springs ?? []).some((p) => Math.hypot(p.pos.x - x, p.pos.z - z) < 2.4)) continue;
       if (Math.abs(z - (s.max.z - 0.6)) < 2 && Math.abs(x - s.max.x) < 4) continue;
       return new Vector3(x, s.max.y, z);
     }

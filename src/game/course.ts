@@ -8,13 +8,15 @@ export interface AABB {
   max: Vector3;
 }
 
-export type SolidKind = 'home' | 'island' | 'tower' | 'platform';
+export type SolidKind = 'home' | 'island' | 'tower' | 'platform' | 'stone';
 
 export interface Solid extends AABB {
   id: number;
   kind: SolidKind;
   /** Zone index, or -1 for the home island. */
   zone: number;
+  /** True while the solid is gone (a sunk crumble stone): no collision, no ground. */
+  off?: boolean;
 }
 
 export interface AnchorDrift {
@@ -36,6 +38,40 @@ export interface Anchor {
   minReach: number;
   /** Drifting Hooks (§9.0, P1): pos.x = baseX + amp × sin(2π t / period + phase). */
   drift?: AnchorDrift;
+  /** Swaying Hooks: the hook hangs from a pivot and swings back and forth along the course. */
+  sway?: AnchorSway;
+}
+
+/**
+ * A pendulum hook: θ = angle × sin(2π t / period + phase); the hook sits at
+ * pivot + length × (0, −cos θ, −sin θ), so at θ = 0 it hangs straight below the pivot (its base position)
+ * and positive θ carries it forward (toward −z, away from home).
+ */
+export interface AnchorSway {
+  pivot: Vector3;
+  length: number;
+  /** Max swing angle in radians. */
+  angle: number;
+  period: number;
+  phase: number;
+}
+
+/** Spring Coral: a bouncy pad on an island top that launches you high (Coral Reef and later). pos is the pad centre. */
+export interface Spring {
+  id: number;
+  zone: number;
+  pos: Vector3;
+  radius: number;
+}
+
+/**
+ * Crumble Stone: a small rock poking out of the sea mid-gap (Stormy Seas to Volcano Bay). It holds you for
+ * CRUMBLE.shake seconds after you land on it, then sinks for CRUMBLE.sunk seconds and rises again.
+ */
+export interface Stone {
+  id: number;
+  zone: number;
+  solid: Solid;
 }
 
 /** Bounce Buoy (§9.0): a static collider in the sea under the middle of a gap. pos is the top centre. */
@@ -60,11 +96,20 @@ export type GeyserState = 'idle' | 'warning' | 'erupting';
 export const GEYSER = { idle: 4, warning: 1, erupt: 2, radius: 1.5 };
 export const GEYSER_PERIOD = GEYSER.idle + GEYSER.warning + GEYSER.erupt;
 export const DRIFT = { amp: 2.5, period: 4 };
+export const SWAY = { length: 7, angle: 0.34, period: 3.6 };
+/** Spring coral launch: straight up at launchVel; your run carries over, capped at maxHorizontal so a bounce stays readable. */
+export const SPRING = { radius: 1.1, launchVel: 22, maxHorizontal: 6 };
+export const CRUMBLE = { shake: 1.2, sunk: 3.2, rise: 0.8, size: 2.4, top: 2.4 };
 
 /** Where an anchor is at sim time t (drifting hooks move along x). */
 export function anchorPosAt(a: Anchor, t: number, out: Vector3): Vector3 {
   out.copy(a.pos);
   if (a.drift) out.x = a.drift.baseX + a.drift.amp * Math.sin((2 * Math.PI * t) / a.drift.period + a.drift.phase);
+  if (a.sway) {
+    const w = a.sway;
+    const th = w.angle * Math.sin((2 * Math.PI * t) / w.period + w.phase);
+    out.set(w.pivot.x, w.pivot.y - w.length * Math.cos(th), w.pivot.z - w.length * Math.sin(th));
+  }
   return out;
 }
 
@@ -142,6 +187,8 @@ export interface Course {
   shopZone: AABB;
   buoys: Buoy[];
   geysers: Geyser[];
+  springs: Spring[];
+  stones: Stone[];
 }
 
 export const LIGHTHOUSE_TOP = 14;
@@ -336,6 +383,63 @@ export function generateCourse(seed = 20261105): Course {
     geysers.push({ id: nextId++, zone: island.zone, pos, radius: GEYSER.radius, phase: frng.range(0, GEYSER_PERIOD) });
   }
 
+  // Later features (swaying hooks, spring coral, crumble stones) draw from a third stream for the same reason.
+  const lrng = new Rng((seed ^ 0x51ab_c0de) >>> 0);
+
+  // Swaying hooks: zones 3–7 (index 2..6), the middle gap of each zone, its first anchor.
+  for (let zi = 2; zi < ZONES.length; zi++) {
+    const zoneGaps = gaps.filter((g) => g.zone === zi);
+    const mid = zoneGaps[Math.floor(zoneGaps.length / 2)];
+    if (!mid || mid === zoneGaps[zoneGaps.length - 1]) continue;
+    const a = mid.anchors[0];
+    a.sway = {
+      pivot: new Vector3(a.pos.x, a.pos.y + SWAY.length, a.pos.z),
+      length: SWAY.length,
+      angle: SWAY.angle,
+      period: SWAY.period,
+      phase: lrng.range(0, Math.PI * 2),
+    };
+  }
+
+  // Spring coral: one pad per island from the Coral Reef on (lighthouse islands have their launch pad instead),
+  // toward a side edge and clear of creatures and geysers.
+  const springs: Spring[] = [];
+  for (const island of islands) {
+    if (island.zone < 1) continue;
+    const s = island.solid;
+    if (lighthouses.some((l) => l.tower.min.z >= s.min.z && l.tower.max.z <= s.max.z)) continue;
+    const cx = (s.min.x + s.max.x) / 2;
+    const half = (s.max.x - s.min.x) / 2;
+    const clear = (x: number, z: number) =>
+      island.spawnPoints.every((p) => Math.hypot(p.x - x, p.z - z) > 2.2) &&
+      geysers.every((g) => Math.hypot(g.pos.x - x, g.pos.z - z) > 3.4) &&
+      lighthouses.every((l) => Math.hypot((l.tower.min.x + l.tower.max.x) / 2 - x, (l.tower.min.z + l.tower.max.z) / 2 - z) > 3.6) &&
+      pads.every((p) => Math.hypot((p.min.x + p.max.x) / 2 - x, (p.min.z + p.max.z) / 2 - z) > 3.2);
+    let side = lrng.chance(0.5) ? 1 : -1;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (attempt === 20) side = -side;
+      const x = cx + side * (half - SPRING.radius - lrng.range(0.4, 2.2));
+      const z = lrng.range(s.min.z + 2.2, s.max.z - 2.2);
+      if (!clear(x, z)) continue;
+      springs.push({ id: nextId++, zone: island.zone, pos: new Vector3(x, s.max.y, z), radius: SPRING.radius });
+      break;
+    }
+  }
+
+  // Crumble stones: one in every gap of Stormy Seas, Kraken Deep and Volcano Bay, beside the gap's buoy (if any).
+  const stones: Stone[] = [];
+  for (const gap of gaps) {
+    if (gap.zone < 3 || gap.zone > 5) continue;
+    const z = (gap.from.solid.min.z + gap.to.solid.max.z) / 2;
+    const mx = anchorMidX(gap);
+    const buoy = buoys.find((b) => b.zone === gap.zone && Math.abs(b.pos.z - z) < 0.5);
+    const side = buoy ? (buoy.pos.x > mx ? -1 : 1) : lrng.chance(0.5) ? 1 : -1;
+    const x = mx + side * 2.6;
+    const h = CRUMBLE.size / 2;
+    const solid = addSolid('stone', gap.zone, new Vector3(x - h, -4, z - h), new Vector3(x + h, CRUMBLE.top, z + h));
+    stones.push({ id: nextId++, zone: gap.zone, solid });
+  }
+
   return {
     seed,
     solids,
@@ -354,6 +458,8 @@ export function generateCourse(seed = 20261105): Course {
     shopZone: { min: new Vector3(9, HOME_TOP, HOME_FRONT_Z + 3), max: new Vector3(13, HOME_TOP + 3, HOME_FRONT_Z + 7) },
     buoys,
     geysers,
+    springs,
+    stones,
   };
 }
 
@@ -376,7 +482,7 @@ export function zoneAtZ(course: Course, z: number): number {
 export function groundHeightAt(course: Course, x: number, z: number, maxY: number): number {
   let best = 0;
   for (const s of course.solids) {
-    if (x < s.min.x || x > s.max.x || z < s.min.z || z > s.max.z) continue;
+    if (s.off || x < s.min.x || x > s.max.x || z < s.min.z || z > s.max.z) continue;
     if (s.max.y <= maxY + 0.01 && s.max.y > best) best = s.max.y;
   }
   return best;

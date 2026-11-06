@@ -1,7 +1,8 @@
 import { Vector3 } from 'three';
 import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, SEA_RESPAWN_DELAY } from './config';
 import { ComboTracker } from './combo';
-import { anchorPosAt, generateCourse, geyserStateAt, zoneAtZ, type Anchor, type Course, type GeyserState, type Island, type Pad } from './course';
+import { anchorPosAt, CRUMBLE, generateCourse, geyserStateAt, zoneAtZ, type Anchor, type Course, type GeyserState, type Island, type Pad, type Stone } from './course';
+import { playerOverlaps } from './physics';
 import { creatureIncome, pickSpecies, rollCreature, RARITIES, type CreatureRef } from './creatures';
 import { deliveryMult } from './hatchery';
 import { PlayerSim, type PlayerInput } from './player';
@@ -15,6 +16,8 @@ import type { ReleaseQuality, SimEvent, SimOverrides, WildCreature } from '../co
 export type { SimEvent, WildCreature } from '../contracts';
 
 export const SPLASH_TIME = 1.6;
+
+export type StonePhase = 'solid' | 'shaking' | 'sunk' | 'rising';
 
 const tmpFwd = new Vector3();
 
@@ -52,6 +55,9 @@ export class GameSim {
   private readonly islandBySolid = new Map<number, Island>();
   private readonly padById = new Map<number, Pad>();
   private readonly drifting: Anchor[];
+  /** Sim time each crumble stone started to crumble (absent = solid). */
+  private readonly crumbleStart = new Map<number, number>();
+  private readonly stoneBySolid = new Map<number, Stone>();
   private nextUid = 1;
   private carryFullCooldown = 0;
   private inShopZone = false;
@@ -66,7 +72,8 @@ export class GameSim {
     this.islandBySolid.set(this.course.home.id, this.course.homeIsland);
     for (const island of this.course.islands) this.islandBySolid.set(island.solid.id, island);
     for (const pad of this.course.pads) this.padById.set(pad.id, pad);
-    this.drifting = this.course.anchors.filter((a) => a.drift);
+    this.drifting = this.course.anchors.filter((a) => a.drift || a.sway);
+    for (const st of this.course.stones) this.stoneBySolid.set(st.solid.id, st);
     this.player.reset(this.course.homeSpawn);
     this.respawnCreatures(false);
   }
@@ -125,6 +132,41 @@ export class GameSim {
     return g ? geyserStateAt(g, this.time) : 'idle';
   }
 
+  /** Crumble stone cycle: solid until stood on, then shaking → sunk → rising → solid. t is seconds into the phase. */
+  stoneState(id: number): { phase: StonePhase; t: number } {
+    const start = this.crumbleStart.get(id);
+    if (start === undefined) return { phase: 'solid', t: 0 };
+    let t = this.time - start;
+    if (t < CRUMBLE.shake) return { phase: 'shaking', t };
+    t -= CRUMBLE.shake;
+    if (t < CRUMBLE.sunk) return { phase: 'sunk', t };
+    t -= CRUMBLE.sunk;
+    return { phase: 'rising', t };
+  }
+
+  /** Advances the crumble stones: sinks them after the shake, brings them back once risen (and not inside the player). */
+  private updateStones(): void {
+    if (this.crumbleStart.size === 0) return;
+    const p = this.player.pos;
+    for (const [id, start] of this.crumbleStart) {
+      const st = this.course.stones.find((x) => x.id === id);
+      if (!st) continue;
+      const t = this.time - start;
+      if (t >= CRUMBLE.shake && !st.solid.off && t < CRUMBLE.shake + CRUMBLE.sunk + CRUMBLE.rise) {
+        st.solid.off = true;
+        if (this.player.groundSolid === st.solid && this.player.mode === 'ground') this.player.mode = 'air';
+        this.events.push({ type: 'crumble', stoneId: id, phase: 'sink' });
+      } else if (t >= CRUMBLE.shake + CRUMBLE.sunk + CRUMBLE.rise) {
+        st.solid.off = false;
+        if (playerOverlaps(p.x, p.y, p.z, st.solid)) {
+          st.solid.off = true;
+          continue;
+        }
+        this.crumbleStart.delete(id);
+      }
+    }
+  }
+
   isOnHome(): boolean {
     return this.player.mode === 'ground' && this.player.groundSolid?.kind === 'home';
   }
@@ -144,6 +186,7 @@ export class GameSim {
     this.time += dt;
     this.carryFullCooldown = Math.max(0, this.carryFullCooldown - dt);
     for (const a of this.drifting) anchorPosAt(a, this.time, a.pos);
+    this.updateStones();
 
     this.wave.frozen = this.overrides.waveFrozen;
     this.updateWave(dt);
@@ -265,6 +308,11 @@ export class GameSim {
         const islandOrder = solid.kind === 'home' ? -1 : solid.kind === 'tower' || solid.kind === 'platform' ? -2 : (island?.order ?? -2);
         this.events.push({ type: 'landed', solid, islandOrder });
         if (player.landedAttached) this.combo.release('good');
+        const stone = this.stoneBySolid.get(solid.id);
+        if (stone && !this.crumbleStart.has(stone.id)) {
+          this.crumbleStart.set(stone.id, this.time);
+          this.events.push({ type: 'crumble', stoneId: stone.id, phase: 'shake' });
+        }
         if (solid.kind === 'home') this.endChain('home');
       } else if (ev === 'pad') {
         this.onPad(player.padId);
@@ -272,6 +320,7 @@ export class GameSim {
     }
     if (player.bouncedOn >= 0) this.events.push({ type: 'bounce', buoyId: player.bouncedOn });
     if (player.geyserLaunched >= 0) this.events.push({ type: 'geyser', geyserId: player.geyserLaunched });
+    if (player.sprungOn >= 0) this.events.push({ type: 'spring', springId: player.sprungOn });
 
     if (player.events.includes('sea')) {
       this.endChain('sea');

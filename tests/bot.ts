@@ -33,7 +33,7 @@ export function tryCrossGap(course: Course, gap: Gap, stats: PlayerStats, policy
   const from = gap.from.solid;
   const to = gap.to.solid;
   const sim = new PlayerSim();
-  const drifting = course.anchors.filter((a) => a.drift);
+  const drifting = course.anchors.filter((a) => a.drift || a.sway);
   sim.time = opts.startTime ?? 0;
   const fromX = gap.from.zone < 0 ? 0 : (from.min.x + from.max.x) / 2;
   sim.reset(new Vector3(fromX, from.max.y, from.min.z + 5));

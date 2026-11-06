@@ -173,9 +173,9 @@ describe('Progression facade', () => {
     const { state, p } = setup(true);
     state.index = { toastopus: 0b11, crab_dj: 0b1 };
     const v = p.index();
-    expect(v.total).toBe(84);
+    expect(v.total).toBe(140);
     expect(v.found).toBe(3);
-    expect(v.entries.length).toBe(21);
+    expect(v.entries.length).toBe(35);
     const t = v.entries.find((e) => e.id === 'toastopus')!;
     expect(t.mask).toBe(3);
     expect(t.isNew).toBe(true);

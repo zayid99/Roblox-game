@@ -50,6 +50,8 @@ export type SimEvent =
   | { type: 'padLaunch'; padId: number; inWave: boolean }
   | { type: 'bounce'; buoyId: number }
   | { type: 'geyser'; geyserId: number }
+  | { type: 'spring'; springId: number }
+  | { type: 'crumble'; stoneId: number; phase: 'shake' | 'sink' }
   | { type: 'collect'; creature: WildCreature; isNewSpecies: boolean; isNewMutation: boolean }
   | { type: 'carryFull' }
   | { type: 'deliver'; result: DeliveryResult; bonusCash: number; chainMult: number; tripBest: number; closeCall: boolean }

@@ -80,7 +80,7 @@ export class PortraitFactory {
     mesh.rotation.y = 0.55;
     scene.add(mesh);
     const look = getSpecies(c.speciesId).look;
-    const tall = look.plan === 'jelly' || look.plan === 'octo';
+    const tall = look.plan === 'jelly' || look.plan === 'octo' || look.plan === 'star';
     const long = look.plan === 'whale';
     this.camera.position.set(0, tall ? 1.4 : 1.1, long ? 4.6 : 3.9);
     this.camera.lookAt(0, tall ? 0.8 : 0.5, 0);
