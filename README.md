@@ -5,7 +5,8 @@ A Roblox-style 3D obby for [CrazyGames](https://www.crazygames.com): swing out o
 **Status: v2 ("Big Splash" update).** The v0.1 core loop plus a new toon look, a guided first session, an adaptive soundtrack and the retention features:
 
 - **Swinging:** auto-targeting hooks with a screen reticle, a Perfect release window (gold ring, speed boost), swing chains, close calls, double jump, buoys and geysers
-- **7 zones** gated by Rope Reach, 21 creatures with Gold, Diamond and Rainbow mutations, a Featured Creature each week
+- **7 zones** gated by Rope Reach, 35 creatures with Gold, Diamond and Rainbow mutations, a Featured Creature each week
+- **Obstacles that change by zone:** bounce buoys, Spring Coral pads that launch you high (Coral Reef on), drifting and swaying (pendulum) hooks (Lagoon on), crumble stones mid-gap that sink 1.2 s after you land (Stormy Seas to Volcano Bay) and volcano geysers
 - **The wave:** a 70 s cycle with a warning, a wave meter that says "hits you in Ns", Golden Waves (every 4th) and Big Waves (every 5th), lighthouse launch pads, and a practice wave in the tutorial
 - **Home base:** pedestals that earn cash every second, also while you're away (up to 1 hour, shown on a Welcome Back card)
 - **Tutorial (FTUE):** 8 short steps that teach grab, release, collect, home, earn, shop and the wave, with a timing assist, a skip link and contextual hints afterwards
@@ -85,7 +86,7 @@ npm test           # unit tests: economy, save migration, quests, daily, gifts, 
 npm run typecheck
 ```
 
-The course test runs a bot through all 21 gaps with exactly the upgrades each zone requires; the tutorial tests run a bot through every FTUE step. If a change makes a gap or a step impossible, the tests fail.
+The course test runs a bot through all 21 gaps with exactly the upgrades each zone requires (swaying and drifting hooks at every phase, and from every crumble stone); the tutorial tests run a bot through every FTUE step. If a change makes a gap or a step impossible, the tests fail.
 
 ## Project layout
 
