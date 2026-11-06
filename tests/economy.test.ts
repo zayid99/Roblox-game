@@ -6,7 +6,7 @@ import { GameState } from '../src/game/state';
 
 describe('creatures', () => {
   it('has three species per rarity', () => {
-    RARITIES.forEach((_, r) => expect(SPECIES.filter((s) => s.rarity === r).length).toBe(3));
+    RARITIES.forEach((_, r) => expect(SPECIES.filter((s) => s.rarity === r).length).toBe(5));
     expect(new Set(SPECIES.map((s) => s.id)).size).toBe(SPECIES.length);
   });
 

@@ -26,6 +26,8 @@ const PLANS: Record<BodyPlan, Plan> = {
   turtle: { f1: 400, f2: 1000, syl: [[0, -3], [-3, -5], [0, 4]], len: 0.14, vib: 6 },
   shrimp: { f1: 900, f2: 2900, syl: [[7, 12], [5, 7], [12, 12]], len: 0.11, vib: 6 },
   jelly: { f1: 450, f2: 1300, syl: [[3, 5], [5, 3], [3, 10]], len: 0.11, vib: 9 },
+  star: { f1: 650, f2: 2000, syl: [[0, 5], [5, 9], [9, 14]], len: 0.09, vib: 5 },
+  puffer: { f1: 420, f2: 1100, syl: [[-2, 3], [3, 8], [12, 0]], len: 0.12, vib: 12 },
 };
 
 const STEPS = [0, 3, 5, 7, 10, 12, 15];
@@ -43,11 +45,22 @@ const TRIM_DB: Record<string, number> = {
   big_cheese: -2.3, cosmic_sunfish: -4.4, captain_splash: -1.8,
 };
 
+/**
+ * The original 21 species keep the pitch step they had when SPECIES held 3 per rarity (rarity × 3 + slot);
+ * the later two per rarity get their own steps so neighbours in the Index don't sound alike.
+ */
+function pitchStep(speciesId: string): number {
+  const s = SPECIES.find((x) => x.id === speciesId)!;
+  const slot = SPECIES.filter((x) => x.rarity === s.rarity).indexOf(s);
+  const legacy = slot < 3 ? slot : -1;
+  return legacy >= 0 ? STEPS[(s.rarity * 3 + legacy) % 7] : STEPS[(s.rarity * 2 + slot + 3) % 7];
+}
+
 export function speciesPitch(speciesId: string): { f0: number; plan: BodyPlan } | null {
   const i = SPECIES.findIndex((s) => s.id === speciesId);
   if (i < 0) return null;
   const plan = SPECIES[i].look.plan;
-  let f0 = 220 * Math.pow(2, STEPS[i % 7] / 12);
+  let f0 = 220 * Math.pow(2, pitchStep(speciesId) / 12);
   if (plan === 'whale') f0 *= 0.75;
   if (plan === 'shrimp') f0 *= 1.5;
   return { f0, plan };
