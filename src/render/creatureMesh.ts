@@ -221,9 +221,9 @@ function details(b: BoxBuilder, s: Species, h: Head): void {
       b.box(0, STAR_CY - 0.2, 0.21, 0.12, 0.04, 0.02, '#5a2330', { noOutline: true });
       break;
     case 'gum_puffer':
-      // A bubblegum bubble on the lips.
-      b.box(0, 0.32, 0.58, 0.3, 0.3, 0.24, '#ffc2e6');
-      b.box(-0.06, 0.38, 0.705, 0.07, 0.07, 0.01, '#ffffff', { noOutline: true });
+      // A big bubblegum bubble blown from the lips.
+      b.box(0, 0.3, 0.66, 0.44, 0.44, 0.36, '#ffc2e6');
+      b.box(-0.09, 0.4, 0.845, 0.09, 0.09, 0.01, '#ffffff', { noOutline: true });
       break;
     case 'sushi_seal':
       // Nigiri: a salmon slab on the rice, striped with fat, and a nori belt.
@@ -266,8 +266,11 @@ function details(b: BoxBuilder, s: Species, h: Head): void {
       h.z = 0.1;
       break;
     case 'lollipop_star':
-      // A white candy swirl on the middle and a stick down the back.
-      for (const [x, y, w, hh] of [[0, 0.38, 0.4, 0.04], [0.19, 0.6, 0.04, 0.4], [0, 0.82, 0.4, 0.04], [-0.12, 0.6, 0.04, 0.28], [0.04, 0.48, 0.24, 0.04]]) b.box(x, y, 0.205, w, hh, 0.01, accent, { noOutline: true });
+      // Candy stripes across every arm and a stick down the back.
+      for (const a of STAR_ARMS) {
+        const rot = new Matrix4().makeRotationZ(a);
+        for (const r of [0.42, 0.62]) b.box(-Math.sin(a) * r, STAR_CY + Math.cos(a) * r, 0, r > 0.5 ? 0.22 : 0.36, 0.06, r > 0.5 ? 0.28 : 0.34, accent, { matrix: rot, noOutline: true });
+      }
       b.box(0, STAR_CY - 0.2, -0.3, 0.06, 0.9, 0.06, extra);
       break;
     case 'pineapple_puffer':

@@ -565,7 +565,8 @@ export class World {
 
   private nearLighthouse(isl: Island, x: number, z: number): boolean {
     return this.course.lighthouses.some((lh) => lh.tower.max.y > isl.solid.max.y && Math.hypot((lh.tower.min.x + lh.tower.max.x) / 2 - x, (lh.tower.min.z + lh.tower.max.z) / 2 - z) < 4.5)
-      || this.course.pads.some((p) => Math.hypot((p.min.x + p.max.x) / 2 - x, (p.min.z + p.max.z) / 2 - z) < 3);
+      || this.course.pads.some((p) => Math.hypot((p.min.x + p.max.x) / 2 - x, (p.min.z + p.max.z) / 2 - z) < 3)
+      || (this.course.springs ?? []).some((p) => Math.hypot(p.pos.x - x, p.pos.z - z) < 2.4);
   }
 
   /** G8 two-tier podiums; locked ones carry a lock plaque. Rebuilt only when the count changes. */

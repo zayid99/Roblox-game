@@ -9,13 +9,13 @@ export type SfxId =
   | 'ui.click' | 'ui.hover' | 'ui.open' | 'ui.close' | 'ui.tab' | 'ui.denied' | 'toast' | 'jump' | 'doubleJump' | 'grab' | 'release'
   | 'perfect' | 'perfectWindow' | 'land' | 'pad' | 'bounce' | 'geyser' | 'collect' | 'coinTick' | 'deliver' | 'buy' | 'maxed' | 'claim' | 'splash' | 'sea'
   | 'horn' | 'tick' | 'zone' | 'chainStep' | 'chainEnd' | 'chainLost' | 'closeCall' | 'giftReady' | 'reveal' | 'rebirth'
-  | 'tutorialStep' | 'tutorialDone' | 'slowIn' | 'slowOut';
+  | 'tutorialStep' | 'tutorialDone' | 'slowIn' | 'slowOut' | 'spring' | 'crumble' | 'stoneSink';
 
 export const SFX_IDS: readonly SfxId[] = [
   'ui.click', 'ui.hover', 'ui.open', 'ui.close', 'ui.tab', 'ui.denied', 'toast', 'jump', 'doubleJump', 'grab', 'release',
   'perfect', 'perfectWindow', 'land', 'pad', 'bounce', 'geyser', 'collect', 'coinTick', 'deliver', 'buy', 'maxed', 'claim', 'splash', 'sea',
   'horn', 'tick', 'zone', 'chainStep', 'chainEnd', 'chainLost', 'closeCall', 'giftReady', 'reveal', 'rebirth',
-  'tutorialStep', 'tutorialDone', 'slowIn', 'slowOut',
+  'tutorialStep', 'tutorialDone', 'slowIn', 'slowOut', 'spring', 'crumble', 'stoneSink',
 ];
 
 export interface PlayOpts {
@@ -225,6 +225,31 @@ export class SfxBank {
       case 'bounce':
         this.tone(t, { type: 'triangle', f0: 180, f1: 520, glide: 0.16, dur: 0.18, peak: 0.14 });
         this.plop(t, 0.4);
+        break;
+      case 'spring': {
+        // A cartoon boing: a triangle sweeping up with a fast wobble, plus a soft thump.
+        const vo = e.begin(this.out, t);
+        const o = vo.osc('triangle', 160);
+        o.frequency.exponentialRampToValueAtTime(620, t + 0.22);
+        const lfo = vo.osc('sine', 22);
+        const lg = vo.gain(40);
+        lfo.connect(lg).connect(o.frequency);
+        const g = vo.gain(0);
+        g.gain.linearRampToValueAtTime(0.16, t + 0.01);
+        g.gain.setTargetAtTime(0, t + 0.2, 0.06);
+        o.connect(g).connect(vo.out);
+        vo.finish(t + 0.5);
+        this.tone(t, { type: 'sine', f0: 110, f1: 60, glide: 0.08, dur: 0.1, peak: 0.12 });
+        break;
+      }
+      case 'crumble':
+        // Gritty cracking: a few short highpassed noise ticks over a low rumble.
+        for (let k = 0; k < 4; k++) this.noise(t + k * 0.07 + r(0, 0.02), { type: 'bandpass', f0: 1800 + k * 400, q: 2, dur: 0.05, peak: 0.07 });
+        this.noise(t, { kind: 'brown', type: 'lowpass', f0: 220, dur: 0.5, peak: 0.09, attack: 0.05 });
+        break;
+      case 'stoneSink':
+        this.noise(t, { kind: 'brown', type: 'lowpass', f0: 500, f1: 150, glide: 0.4, dur: 0.45, peak: 0.12 });
+        this.plop(t + 0.12, 0.6);
         break;
       case 'geyser':
         e.duckMusic(DUCK4, t);

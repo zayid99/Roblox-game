@@ -58,8 +58,8 @@ export const SPECIES: readonly Species[] = [
   { id: 'toastopus', name: 'Toastopus', rarity: 0, incomeMult: 1, look: { plan: 'octo', body: '#d9a05b', accent: '#fff1a8', acc: 'none' } },
   { id: 'pickle_puff', name: 'Pickle Puff', rarity: 0, incomeMult: 1.15, look: { plan: 'blob', body: '#7bbf3a', accent: '#3f7d1e', acc: 'none' } },
   { id: 'soggy_sock', name: 'Soggy Sock', rarity: 0, incomeMult: 1.3, look: { plan: 'fish', body: '#eef0f6', accent: '#e04f5f', acc: 'none' } },
-  { id: 'cookie_star', name: 'Cookie Starfish', rarity: 0, incomeMult: 0.95, look: { plan: 'star', body: '#d99a52', accent: '#4a2a17', acc: 'none' } },
-  { id: 'gum_puffer', name: 'Bubblegum Puffer', rarity: 0, incomeMult: 1.4, look: { plan: 'puffer', body: '#ff8fd0', accent: '#ffd1ec', acc: 'none' } },
+  { id: 'cookie_star', name: 'Cookie Star', rarity: 0, incomeMult: 0.95, look: { plan: 'star', body: '#d99a52', accent: '#4a2a17', acc: 'none' } },
+  { id: 'gum_puffer', name: 'Bubblegum Puff', rarity: 0, incomeMult: 1.4, look: { plan: 'puffer', body: '#ff8fd0', accent: '#ffd1ec', acc: 'none' } },
   // Uncommon
   { id: 'crab_dj', name: 'Crab DJ', rarity: 1, incomeMult: 1, look: { plan: 'crab', body: '#ff6b4a', accent: '#2a2a35', acc: 'headphones' } },
   { id: 'boba_turtle', name: 'Boba Turtle', rarity: 1, incomeMult: 1.15, look: { plan: 'turtle', body: '#8fd18a', accent: '#d8b48a', extra: '#3a2618', acc: 'none' } },
@@ -71,31 +71,31 @@ export const SPECIES: readonly Species[] = [
   { id: 'disco_clam', name: 'Disco Clam', rarity: 2, incomeMult: 1.15, look: { plan: 'clam', body: '#c7a6ff', accent: '#e8f4ff', acc: 'none' } },
   { id: 'waffle_walrus', name: 'Waffle Walrus', rarity: 2, incomeMult: 1.3, look: { plan: 'blob', body: '#d79b4a', accent: '#fff7e8', acc: 'none', scale: 1.15 } },
   { id: 'popcorn_puffer', name: 'Popcorn Puffer', rarity: 2, incomeMult: 0.95, look: { plan: 'puffer', body: '#fff6d6', accent: '#ffd23f', extra: '#e8413c', acc: 'none' } },
-  { id: 'spaghetti_squid', name: 'Spaghetti Squid', rarity: 2, incomeMult: 1.4, look: { plan: 'octo', body: '#ffd36b', accent: '#d9352b', extra: '#7a3b1e', acc: 'none' } },
+  { id: 'spaghetti_squid', name: 'Spaghettopus', rarity: 2, incomeMult: 1.4, look: { plan: 'octo', body: '#ffd36b', accent: '#d9352b', extra: '#7a3b1e', acc: 'none' } },
   // Epic
   { id: 'burger_whale', name: 'Burger Whale', rarity: 3, incomeMult: 1, look: { plan: 'whale', body: '#d0893f', accent: '#6b3a1e', extra: '#79c94a', acc: 'none' } },
   { id: 'cactus_jelly', name: 'Cactus Jelly', rarity: 3, incomeMult: 1.15, look: { plan: 'jelly', body: '#6fdc8c', accent: '#ff7eb6', acc: 'flower' } },
   { id: 'ninja_narwhal', name: 'Ninja Narwhal', rarity: 3, incomeMult: 1.3, look: { plan: 'whale', body: '#3b3f58', accent: '#ff3b3b', extra: '#f2f2f2', acc: 'bandana' } },
-  { id: 'hotdog_hammerhead', name: 'Hotdog Hammerhead', rarity: 3, incomeMult: 0.95, look: { plan: 'fish', body: '#e8a85a', accent: '#c4432f', extra: '#ffd23f', acc: 'propeller', scale: 1.15 } },
-  { id: 'lollipop_star', name: 'Lollipop Starfish', rarity: 3, incomeMult: 1.4, look: { plan: 'star', body: '#ff5ea8', accent: '#ffffff', extra: '#f2f2f2', acc: 'partyhat', scale: 1.1 } },
+  { id: 'hotdog_hammerhead', name: 'Hotdog Shark', rarity: 3, incomeMult: 0.95, look: { plan: 'fish', body: '#e8a85a', accent: '#c4432f', extra: '#ffd23f', acc: 'propeller', scale: 1.15 } },
+  { id: 'lollipop_star', name: 'Lollipop Star', rarity: 3, incomeMult: 1.4, look: { plan: 'star', body: '#ff5ea8', accent: '#ffffff', extra: '#f2f2f2', acc: 'partyhat', scale: 1.1 } },
   // Legendary
   { id: 'king_krill', name: 'King Krill', rarity: 4, incomeMult: 1, look: { plan: 'shrimp', body: '#ff7a59', accent: '#ffd23f', acc: 'crown', scale: 1.2 } },
   { id: 'lava_lobster', name: 'Lava Lobster', rarity: 4, incomeMult: 1.15, look: { plan: 'crab', body: '#ff4a1c', accent: '#ffcc00', acc: 'horn', scale: 1.15 } },
   { id: 'astro_otter', name: 'Astro Otter', rarity: 4, incomeMult: 1.3, look: { plan: 'blob', body: '#8b5a3c', accent: '#d9f4ff', acc: 'helmet', scale: 1.1 } },
-  { id: 'pineapple_puffer', name: 'Pineapple Puffer', rarity: 4, incomeMult: 0.95, look: { plan: 'puffer', body: '#ffc93a', accent: '#c98a1c', extra: '#3fae49', acc: 'shades', scale: 1.15 } },
+  { id: 'pineapple_puffer', name: 'Pineapuffer', rarity: 4, incomeMult: 0.95, look: { plan: 'puffer', body: '#ffc93a', accent: '#c98a1c', extra: '#3fae49', acc: 'shades', scale: 1.15 } },
   { id: 'gelato_orca', name: 'Gelato Orca', rarity: 4, incomeMult: 1.4, look: { plan: 'whale', body: '#ff9ec4', accent: '#c98a4b', extra: '#9df2d0', acc: 'propeller', scale: 1.1 } },
   // Mythic
   { id: 'thunder_tuna', name: 'Thunder Tuna', rarity: 5, incomeMult: 1, look: { plan: 'fish', body: '#3a6cf4', accent: '#ffe600', acc: 'none', scale: 1.3 } },
   { id: 'ghost_galleon', name: 'Ghost Galleon', rarity: 5, incomeMult: 1.15, look: { plan: 'jelly', body: '#e9f3ff', accent: '#7cc4ff', acc: 'pirate', scale: 1.25 } },
   { id: 'pizza_kraken', name: 'Pizza Kraken', rarity: 5, incomeMult: 1.3, look: { plan: 'octo', body: '#ffcf5a', accent: '#d9452b', acc: 'none', scale: 1.35 } },
-  { id: 'nova_star', name: 'Supernova Starfish', rarity: 5, incomeMult: 0.95, look: { plan: 'star', body: '#ff7a1a', accent: '#ffe600', extra: '#fff7c2', acc: 'halo', scale: 1.3 } },
-  { id: 'sharkcuterie', name: 'Sharkcuterie Board', rarity: 5, incomeMult: 1.4, look: { plan: 'fish', body: '#b9824a', accent: '#d9455a', extra: '#ffd84a', acc: 'tophat', scale: 1.3 } },
+  { id: 'nova_star', name: 'Supernova Star', rarity: 5, incomeMult: 0.95, look: { plan: 'star', body: '#ff7a1a', accent: '#ffe600', extra: '#fff7c2', acc: 'halo', scale: 1.3 } },
+  { id: 'sharkcuterie', name: 'Sharkcuterie', rarity: 5, incomeMult: 1.4, look: { plan: 'fish', body: '#b9824a', accent: '#d9455a', extra: '#ffd84a', acc: 'tophat', scale: 1.3 } },
   // Secret
   { id: 'big_cheese', name: 'The Big Cheese', rarity: 6, incomeMult: 1, look: { plan: 'whale', body: '#ffd84a', accent: '#e0a800', extra: '#fff3b0', acc: 'crown', scale: 1.3 } },
   { id: 'cosmic_sunfish', name: 'Cosmic Sunfish', rarity: 6, incomeMult: 1.15, look: { plan: 'blob', body: '#2a1a5e', accent: '#ff9cf0', extra: '#5ef3ff', acc: 'shades', scale: 1.35 } },
   { id: 'captain_splash', name: 'Captain Splash', rarity: 6, incomeMult: 1.3, look: { plan: 'crab', body: '#39b8ff', accent: '#ffffff', acc: 'pirate', scale: 1.35 } },
-  { id: 'angel_puffer', name: 'Angel Cake Puffer', rarity: 6, incomeMult: 0.95, look: { plan: 'puffer', body: '#fff8f0', accent: '#ffd6e8', extra: '#ffe27a', acc: 'halo', scale: 1.35 } },
-  { id: 'ramen_turtle', name: 'Emperor Ramen Turtle', rarity: 6, incomeMult: 1.4, look: { plan: 'turtle', body: '#9be07a', accent: '#d94a2b', extra: '#ffe08a', acc: 'crown', scale: 1.35 } },
+  { id: 'angel_puffer', name: 'Angelcake Puff', rarity: 6, incomeMult: 0.95, look: { plan: 'puffer', body: '#fff8f0', accent: '#ffd6e8', extra: '#ffe27a', acc: 'halo', scale: 1.35 } },
+  { id: 'ramen_turtle', name: 'Ramen Emperor', rarity: 6, incomeMult: 1.4, look: { plan: 'turtle', body: '#9be07a', accent: '#d94a2b', extra: '#ffe08a', acc: 'crown', scale: 1.35 } },
 ];
 
 const SPECIES_BY_ID = new Map(SPECIES.map((s) => [s.id, s]));

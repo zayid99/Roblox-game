@@ -379,6 +379,14 @@ export class GameRenderer {
         this.objects.onGeyser(e.geyserId, parts);
         this.rig.kickFov(10, 0.4);
         break;
+      case 'spring':
+        this.objects.onSpring(e.springId, t, parts);
+        this.rig.kickFov(6, 0.3);
+        break;
+      case 'crumble':
+        this.objects.onCrumble(e.stoneId, e.phase, parts);
+        if (e.phase === 'shake') this.rig.addTrauma(TRAUMA.closeCall * 0.5);
+        break;
       case 'collect': {
         const rarity = getSpecies(e.creature.speciesId).rarity;
         this.creatures.onCollect(e.creature);
