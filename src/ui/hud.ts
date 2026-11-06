@@ -263,6 +263,29 @@ export class Hud {
     }
   }
 
+  /** A centre banner is showing (floats that would land on it are skipped). */
+  get bannerUp(): boolean {
+    return this.root.classList.contains('banner-up');
+  }
+
+  private mouseHint: HTMLElement | null = null;
+  /** Desktop mouse-look hint: 'locked' shows "Esc shows cursor", 'free' shows "Click to look", 'off' hides it. */
+  setMouseHint(mode: 'locked' | 'free' | 'off'): void {
+    if (!this.mouseHint) {
+      this.mouseHint = el('div', 'mouse-hint');
+      this.layer.appendChild(this.mouseHint);
+    }
+    const h = this.mouseHint;
+    if (h.dataset.mode === mode) return;
+    h.dataset.mode = mode;
+    h.innerHTML =
+      mode === 'locked'
+        ? `<span class="key">ESC</span><span class="t-stroke">Show cursor</span>`
+        : mode === 'free'
+          ? `${icon('hand', 26)}<span class="t-stroke">Click the game to look with your mouse</span>`
+          : '';
+  }
+
   /** Muted state for the sound buoy (lead calls it on change). Not in the §10.2 list; see report. */
   setMuted(muted: boolean): void {
     if (muted === this.last.muted) return;

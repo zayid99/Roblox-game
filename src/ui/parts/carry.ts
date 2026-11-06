@@ -48,6 +48,7 @@ export class CarryPart {
   update(carried: CreatureRef[], capacity: number, tripBonusPct: number, reduce: boolean): void {
     if (capacity !== this.last.cap) {
       this.last.cap = capacity;
+      this.last.count = -1; // re-render the n/capacity text
       this.slotsEl.innerHTML = '';
       this.slots = [];
       this.keys = [];

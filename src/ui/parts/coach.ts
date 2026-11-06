@@ -50,7 +50,7 @@ export function controlsCardHtml(touch: boolean): string {
     `<div class="ctl-grid">` +
     `<div class="ctl"><span class="keys wasd">${k('W')}<br>${k('A')}${k('S')}${k('D')}</span><span>Move</span></div>` +
     `<div class="ctl"><span class="keys">${k('SPACE', 'key--space')}</span><span>Jump, hold to swing</span></div>` +
-    `<div class="ctl"><span class="keys">${icon('hand', 30)}</span><span>Drag to look</span></div>` +
+    `<div class="ctl"><span class="keys">${icon('hand', 30)}</span><span>Click, then move the mouse to look</span></div>` +
     `<div class="ctl small"><span class="keys">${k('U')}</span><span>Shop</span></div>` +
     `<div class="ctl small"><span class="keys">${k('G')}</span><span>Free</span></div>` +
     `<div class="ctl small"><span class="keys">${k('I')}</span><span>Index</span></div>` +

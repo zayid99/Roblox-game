@@ -324,3 +324,11 @@
 
 /* A panel always keeps toasts at the bottom (after the objective/banner offsets above). */
 .hud-root.panel-open[data-layout] .toasts { top: auto; bottom: 20px; }
+
+/* Desktop mouse-look hint, bottom left, out of the way of the carry bar. */
+.mouse-hint { position: absolute; left: 16px; bottom: 16px; z-index: var(--z-hud); display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 8px; border-radius: 999px; background: rgba(11, 39, 64, .72); border: 3px solid var(--ink);
+  font: 400 16px/1 var(--display); color: #fff; pointer-events: none; transition: opacity .25s var(--ease-out); }
+.mouse-hint .key { min-width: 0; height: 26px; font-size: 13px; padding: 0 6px; border-width: 2px; box-shadow: 0 2px 0 var(--ink); }
+.mouse-hint[data-mode="off"], .touch .mouse-hint, .panel-open .mouse-hint { opacity: 0; }
+.mouse-hint[data-mode="locked"] { opacity: .8; }

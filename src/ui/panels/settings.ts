@@ -43,6 +43,7 @@ export class SettingsPanel implements PanelContent {
     const ctl = this.section('CONTROLS', 'hand');
     ctl.append(
       this.slider('Camera speed', Math.round(s.camSens * 100), 50, 200, (v) => this.set({ camSens: v / 100 }), (v) => `${v}%`),
+      ...(this.env.touch() ? [] : [this.toggle('Mouse look (click to lock cursor)', s.mouseLook, (on) => this.set({ mouseLook: on }))]),
       this.toggle('Invert camera Y', s.invertY, (on) => this.set({ invertY: on })),
       this.toggle('Swing assist', s.swingAssist, (on) => this.set({ swingAssist: on })),
     );

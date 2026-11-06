@@ -122,6 +122,7 @@ export class Game {
     this.input.onFirstGesture = () => this.onFirstGesture();
     this.input.onKey = (e) => this.onKey(e.code, e.key);
     this.input.onTap = (p) => this.onTap(p);
+    this.input.setMouseLook(this.state.settings.mouseLook);
 
     const device = () => this.input.lastDevice;
     const reduce = () => this.reduceMotion;
@@ -274,6 +275,7 @@ export class Game {
     this.audio.setPlatformMuted(platformMuted);
     this.hud.setMuted(s.muted || platformMuted);
     this.input.setCameraPrefs(s.camSens, s.invertY);
+    this.input.setMouseLook(s.mouseLook);
     this.hud.setReduceMotion(this.reduceMotion);
     this.gfx.setReduceMotion(this.reduceMotion);
     if (s.quality !== this.appliedQuality) {
@@ -591,6 +593,9 @@ export class Game {
     // 1. Input and camera look.
     this.input.update();
     const look = this.input.consumeLook();
+    this.hud.setMouseHint(
+      this.input.touchMode || this.input.lastDevice === 'touch' || !state.settings.mouseLook ? 'off' : this.input.locked ? 'locked' : paused ? 'off' : 'free',
+    );
     if (!paused) this.gfx.look(look.dx, look.dy, look.zoom, this.time);
     this.updateNudge(realDt);
 
@@ -900,7 +905,7 @@ export class Game {
         break;
       case 'surgeEnd':
         hud.toast({ text: e.golden ? 'Golden creatures washed up' : 'Fresh creatures washed up', kind: 'info', icon: e.golden ? 'sparkle' : 'creature' });
-        if (e.survived) hud.float(this.playerScreen(2), 'SURVIVED', 'perfect', 'survived');
+        if (e.survived && !hud.bannerUp && !this.tutorial.active) hud.float(this.playerScreen(2), 'SURVIVED', 'perfect', 'survived');
         this.maybeMidgameAd();
         break;
       default:

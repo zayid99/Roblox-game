@@ -21,7 +21,7 @@ import type { FtueStepId, Settings } from '../contracts';
 export const SAVE_VERSION = 2;
 
 export function defaultSettings(): Settings {
-  return { music: 50, sound: 80, muted: false, quality: 'auto', autoTier: null, reduceMotion: false, camSens: 1, invertY: false, swingAssist: true };
+  return { music: 50, sound: 80, muted: false, quality: 'auto', autoTier: null, reduceMotion: false, camSens: 1, invertY: false, swingAssist: true, mouseLook: true };
 }
 
 export const FTUE_STEPS: readonly FtueStepId[] = ['grab', 'release', 'collect', 'home', 'earn', 'shop', 'wave', 'ready'];

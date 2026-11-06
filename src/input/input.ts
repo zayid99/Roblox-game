@@ -27,6 +27,8 @@ const JOY_ZONE_Y = 0.4;
 /** A canvas tap: released within 250 ms and moved less than 10 px. */
 const TAP_MS = 250;
 const TAP_PX = 10;
+/** Raw mouse counts to look units while the cursor is locked (drag uses 1 per pixel). */
+const LOCK_SCALE = 0.45;
 
 export type InputDevice = 'keyboard' | 'touch' | 'mouse';
 
@@ -51,6 +53,10 @@ export class Input {
   lastInputAt = 0;
   /** performance.now() of the last camera look input. */
   lastLookAt = 0;
+  /** Cursor locked to the game: moving the mouse looks around (desktop mouse look). */
+  locked = false;
+  /** Lock state changed (show or hide the "Esc to free cursor" hint). */
+  onLockChange: ((locked: boolean) => void) | null = null;
 
   private readonly keys = new Set<string>();
   private jumpPressed = false;
@@ -70,6 +76,8 @@ export class Input {
   private sens = 1;
   private invertY = false;
   private jumpButtons: HTMLElement[] = [];
+  private mouseLook = true;
+  private lockFailedAt = -1e9;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -98,6 +106,41 @@ export class Input {
       { passive: false },
     );
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('pointerlockchange', () => {
+      const locked = document.pointerLockElement === this.canvas;
+      if (locked === this.locked) return;
+      this.locked = locked;
+      if (locked) this.lookPointer = null;
+      this.onLockChange?.(locked);
+    });
+    document.addEventListener('pointerlockerror', () => {
+      this.lockFailedAt = performance.now();
+    });
+  }
+
+  /** Desktop mouse look (Settings): when on, a click on the game locks the cursor. */
+  setMouseLook(on: boolean): void {
+    this.mouseLook = on;
+    if (!on) this.unlock();
+  }
+
+  /** Free the cursor (panels, menus, settings). */
+  unlock(): void {
+    if (this.locked && document.exitPointerLock) document.exitPointerLock();
+  }
+
+  private tryLock(): void {
+    if (this.locked || !this.mouseLook || this.touchMode || !this.enabled) return;
+    // Browsers refuse a re-lock right after Esc; don't spam them.
+    if (performance.now() - this.lockFailedAt < 1200) return;
+    const req = this.canvas.requestPointerLock as unknown as ((o?: object) => Promise<void> | void) | undefined;
+    if (!req) return;
+    try {
+      const p = req.call(this.canvas);
+      if (p && typeof (p as Promise<void>).catch === 'function') (p as Promise<void>).catch(() => (this.lockFailedAt = performance.now()));
+    } catch {
+      this.lockFailedAt = performance.now();
+    }
   }
 
   /** Jump button for touch screens. It stays pressed while the thumb drifts (pointer capture). */
@@ -135,7 +178,10 @@ export class Input {
   setEnabled(on: boolean): void {
     if (this.enabled === on) return;
     this.enabled = on;
-    if (!on) this.clear();
+    if (!on) {
+      this.clear();
+      this.unlock();
+    }
   }
 
   /** Camera sensitivity (0.5..2) and Y inversion from Settings. */
@@ -232,6 +278,7 @@ export class Input {
       this.keyJump = true;
       return;
     }
+    if (e.code === 'Escape') this.unlock();
     if (this.enabled && e.code === 'KeyQ') this.addLook(-60, 0);
     else if (this.enabled && e.code === 'KeyE') this.addLook(60, 0);
     this.onKey?.({ code: e.code, key: e.key });
@@ -252,6 +299,14 @@ export class Input {
   private pointerDown(e: PointerEvent): void {
     this.gesture();
     this.device(e.pointerType);
+    if (e.pointerType === 'mouse') {
+      if (this.locked) {
+        // Locked cursor: a click picks whatever is under the screen centre.
+        this.tapStart = { id: e.pointerId, x: window.innerWidth / 2, y: window.innerHeight / 2, t: performance.now() };
+        return;
+      }
+      if (e.button === 0) this.tryLock();
+    }
     const w = window.innerWidth;
     const h = window.innerHeight;
     if (this.tapStart === null) this.tapStart = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
@@ -272,11 +327,20 @@ export class Input {
     if (this.lookPointer === null) {
       this.lookPointer = e.pointerId;
       this.lastLook = { x: e.clientX, y: e.clientY };
-      this.canvas.setPointerCapture?.(e.pointerId);
+      try {
+        this.canvas.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* the pointer is being locked */
+      }
     }
   }
 
   private pointerMove(e: PointerEvent): void {
+    if (this.locked && e.pointerType === 'mouse') {
+      if (this.enabled) this.addLook(e.movementX * LOCK_SCALE, e.movementY * LOCK_SCALE);
+      this.lastInputAt = performance.now();
+      return;
+    }
     if (e.pointerId === this.joyPointer) {
       let dx = e.clientX - this.joyOrigin.x;
       let dy = e.clientY - this.joyOrigin.y;
@@ -315,8 +379,8 @@ export class Input {
     if (tap && tap.id === e.pointerId) {
       this.tapStart = null;
       const quick = performance.now() - tap.t < TAP_MS;
-      const still = Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_PX;
-      if (!cancelled && quick && still && this.enabled) this.onTap?.({ x: e.clientX, y: e.clientY });
+      const still = this.locked || Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_PX;
+      if (!cancelled && quick && still && this.enabled) this.onTap?.(this.locked ? { x: tap.x, y: tap.y } : { x: e.clientX, y: e.clientY });
     }
   }
 }

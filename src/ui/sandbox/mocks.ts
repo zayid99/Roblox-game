@@ -128,7 +128,7 @@ export function makeState(): MockState {
     found,
     owned: new Set(['rope_hemp', 'rope_kelp', 'rope_sailor']), equipped: 'rope_kelp',
     luckyTide: 2, dailyCount: 2, dailyClaimable: true, giftsClaimed: new Set([0, 1]), giftsReady: 2,
-    settings: { music: 50, sound: 80, muted: false, quality: 'auto', autoTier: 'medium', reduceMotion: false, camSens: 1, invertY: false, swingAssist: true },
+    settings: { music: 50, sound: 80, muted: false, quality: 'auto', autoTier: 'medium', reduceMotion: false, camSens: 1, invertY: false, swingAssist: true, mouseLook: true },
     lockerUnlocked: true,
   };
 }

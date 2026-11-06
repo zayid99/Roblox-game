@@ -691,6 +691,13 @@ export class CreatureVisuals {
         }
         continue;
       }
+      // Face the player while they are on the home island (like pets watching you), else the default pose.
+      {
+        const dx = f.player.x - p.x;
+        const dz = f.player.z - p.z;
+        const d = Math.hypot(dx, dz);
+        b.a.yawTarget = d > 1.2 && d < 22 ? Math.atan2(dx, dz) : Math.PI + Math.atan2(-p.x, 12) * 0.4;
+      }
       const ph = (beat + (i % 2) * 0.5) % 1;
       const bob = 0.08 * (1 - Math.abs(Math.sin(Math.PI * ph)));
       const land = b.pulse >= 0 ? (t - b.pulse) / 0.12 : 1;

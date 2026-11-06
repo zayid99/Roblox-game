@@ -60,7 +60,7 @@ export const COPY = {
   controlsDesktop: [
     { keys: ['W', 'A', 'S', 'D'], text: 'Move' },
     { keys: ['SPACE'], text: 'Jump, hold to swing' },
-    { keys: ['DRAG'], text: 'Look around' },
+    { keys: ['MOUSE'], text: 'Click, then move to look' },
     { keys: ['U'], text: 'Shop' },
     { keys: ['G'], text: 'Free' },
     { keys: ['I'], text: 'Index' },
@@ -75,7 +75,7 @@ export const COPY = {
   ] as { keys: string[]; text: string }[],
 
   // §7.4 hints
-  dragToLook: { headline: 'DRAG TO LOOK' } as Line,
+  dragToLook: { headline: 'LOOK AROUND' } as Line,
   hints: {
     lockedHook: (reach: number) => `Needs Rope Reach ${reach.toFixed(1)} m`,
     handsFull: 'Hands full. Head home.',

@@ -25,6 +25,8 @@ export type IconId =
 export interface Settings {
   music: number; sound: number; muted: boolean; quality: QualitySetting; autoTier: QualityTier | null;
   reduceMotion: boolean; camSens: number; invertY: boolean; swingAssist: boolean;
+  /** Desktop: click the game to lock the cursor and look by moving the mouse (Esc frees it). */
+  mouseLook: boolean;
 }
 export interface Reward { cash?: number; pearls?: number; luckyTide?: number; boost2xSec?: number /* v2.1 */; creature?: CreatureRef; cosmetic?: string }
 
