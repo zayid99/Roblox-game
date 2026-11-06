@@ -70,9 +70,9 @@ export const EGGS: readonly EggDef[] = ZONES.map((z, i) => ({
   colors: EGG_COLORS[i % EGG_COLORS.length],
 }));
 
-/** An egg is for sale once its zone has been reached (bestZone ≥ zone). */
+/** An egg is for sale once its zone has been reached (bestZone ≥ zone); the Shallows Egg always is. */
 export function eggUnlocked(state: Pick<GameState, 'bestZone'>, zone: number): boolean {
-  return zone >= 0 && zone < EGGS.length && state.bestZone >= zone;
+  return zone >= 0 && zone < EGGS.length && (zone === 0 || state.bestZone >= zone);
 }
 
 export interface Odds {

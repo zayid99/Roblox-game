@@ -69,7 +69,7 @@ describe('hatchery eggs', () => {
 
   it('unlocks eggs by best zone reached', () => {
     const s = new GameState();
-    expect(eggUnlocked(s, 0)).toBe(false);
+    expect([0, 1].map((z) => eggUnlocked(s, z))).toEqual([true, false]); // Shallows Egg from the start
     s.bestZone = 2;
     expect([0, 1, 2, 3].map((z) => eggUnlocked(s, z))).toEqual([true, true, true, false]);
     expect(eggUnlocked(s, -1)).toBe(false);
