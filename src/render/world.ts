@@ -34,6 +34,7 @@ import { Rng } from '../game/rng';
 import { BoxBuilder } from './boxes';
 import { drawBoard, drawLines, SignAtlas, textTexture } from './labels';
 import { inkMaterial, islandMaterial, sharedTime, toonGradient, toonVertexMaterial } from './materials';
+import { hatcheryStand } from './hatchery';
 
 const HOOK_READY = new Color('#FFC92E');
 const HOOK_LOCKED = new Color('#6E7787');
@@ -384,6 +385,7 @@ export class World {
       decor.box(0, 0, 0, 0.6, 0.12, 2.6, i % 2 ? '#FFFFFF' : '#FF4D5E', { matrix: awning });
     }
     signs.board(new Matrix4().makeTranslation(shopX, HOME_TOP + 4.2, shopZ - 0.6), 3.2, 1.28, [{ text: 'SHOP', size: 88, color: '#FFFFFF' }], '#C2203A');
+    this.group.add(hatcheryStand(decor, signs));
     const ag = upgradeArrowGeometry();
     this.arrow = new Group();
     this.arrow.add(new Mesh(ag.body, toonVertexMaterial), new Mesh(ag.hull, inkMaterial));

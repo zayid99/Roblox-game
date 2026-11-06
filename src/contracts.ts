@@ -6,13 +6,14 @@ import type { WavePhase } from './game/wave';
 import type { Solid, Island } from './game/course';
 import type { PlayerEvent } from './game/player';
 import type { DeliveryResult } from './game/state';
+import type { HatcheryView, HatchOutcome } from './game/hatchery';
 
 export type LayoutMode = 'desktop' | 'landscape' | 'portrait';
 export type QualityTier = 'low' | 'medium' | 'high';
 export type QualitySetting = 'auto' | QualityTier;
-export type RailId = 'shop' | 'free' | 'index' | 'rebirth';
-export type PanelKind = 'shop' | 'index' | 'free' | 'settings' | 'welcome';
-export type PanelTab = 'upgrades' | 'locker' | 'rebirth' /* shop */ | 'daily' | 'gifts' /* free */;
+export type RailId = 'shop' | 'free' | 'index' | 'rebirth' | 'hatchery';
+export type PanelKind = 'shop' | 'index' | 'free' | 'settings' | 'welcome' | 'hatchery';
+export type PanelTab = 'upgrades' | 'locker' | 'rebirth' /* shop */ | 'daily' | 'gifts' /* free */ | 'eggs' | 'buddy' /* hatchery */;
 export type HudPart = 'cash' | 'pearls' | 'rail' | 'wave' | 'course' | 'tracker' | 'carry' | 'chain' | 'topRight';
 export type FtueStepId = 'grab' | 'release' | 'collect' | 'home' | 'earn' | 'shop' | 'wave' | 'ready';
 export type Surface = 'grass' | 'sand' | 'wood';
@@ -20,7 +21,7 @@ export type IconId =
   | 'cash' | 'pearl' | 'shop' | 'index' | 'rebirth' | 'gift' | 'locker' | 'settings' | 'sound-on' | 'sound-off'
   | 'speed' | 'reach' | 'power' | 'carry' | 'pedestal' | 'wave' | 'lighthouse' | 'home' | 'lock' | 'check' | 'close'
   | 'play' | 'arrow-up' | 'chevron' | 'chain' | 'perfect' | 'sparkle' | 'flame' | 'lucky-tide' | 'gem' | 'creature'
-  | 'warning' | 'hand' | 'thumb';
+  | 'warning' | 'hand' | 'thumb' | 'egg' | 'buddy';
 
 export interface Settings {
   music: number; sound: number; muted: boolean; quality: QualitySetting; autoTier: QualityTier | null;
@@ -113,6 +114,7 @@ export interface PanelData {
   shop(): ShopView; index(): IndexView; free(): FreeView; locker(): LockerView;
   settings(): Settings & { platformMuted: boolean; autoTier: QualityTier };
   welcome(): WelcomeView;
+  hatchery(): HatcheryView;
 }
 export interface UiActions {
   buyUpgrade(key: UpgradeKey, n: 1 | 5 | 'max'): boolean /* false = can't afford or maxed (stops hold-repeat) */; rebirth(): void;
@@ -122,6 +124,8 @@ export interface UiActions {
   collectWelcome(double: boolean): void;            // double = watch a rewarded ad first (lead runs it)
   toggleMute(): void; skipTutorial(): void;
   panelChanged(kind: PanelKind | null, tab?: PanelTab): void;   // pause/unpause, SDK gameplayStop/Start, tutorial
+  hatchEgg(zone: number): HatchOutcome | null;      // null = locked or can't afford
+  setBuddy(c: CreatureRef | null): void;
 }
 
 // ---------- Guides (tutorial → graphics) ----------

@@ -8,6 +8,7 @@ A Roblox-style 3D obby for [CrazyGames](https://www.crazygames.com): swing out o
 - **7 zones** gated by Rope Reach, 21 creatures with Gold, Diamond and Rainbow mutations, a Featured Creature each week
 - **The wave:** a 70 s cycle with a warning, a wave meter that says "hits you in Ns", Golden Waves (every 4th) and Big Waves (every 5th), lighthouse launch pads, and a practice wave in the tutorial
 - **Home base:** pedestals that earn cash every second, also while you're away (up to 1 hour, shown on a Welcome Back card)
+- **Hatchery:** a stand on the home island sells one egg per zone you've reached (odds shown on each egg); the egg wobbles, cracks and the creature goes to your base. Pick a **Buddy** from your base: it follows you around and adds +5% (Common) to +35% (Secret) to delivery cash
 - **Tutorial (FTUE):** 8 short steps that teach grab, release, collect, home, earn, shop and the wave, with a timing assist, a skip link and contextual hints afterwards
 - **First Voyage** quest line (12 steps), **Daily** calendar with a streak bonus, **Playtime gifts**, the **Index**, the **Locker** (rope skins bought with Pearls), **Lucky Tide** tokens and **Rebirth**
 - **Toon graphics:** custom tone mapping, toon water and foam, a storm mood during the surge, creature portraits, three quality tiers with an automatic pick
@@ -50,12 +51,13 @@ Module test pages: `?sandbox=ui`, `?sandbox=render`, `?sandbox=audio`, `?sandbox
 | Shop | **U** | Shop tile |
 | Free rewards (Daily, Gifts) | **G** | FREE tile |
 | Index | **I** | Index tile |
+| Hatchery (eggs, Buddy) | **H**, or walk up to the stand | EGGS tile |
 | Locker | **L** (after the First Voyage) | Locker tab in the Shop, or tap your character |
 | Settings | **P** | Gear button |
 | Mute | **M** | Sound button |
 | Close a panel | **Esc** | Life-ring button or tap outside |
 
-Tap a creature on a home pedestal to hear it and see its idle animation.
+Tap a creature on a home pedestal to hear it and see its idle animation (and to make it your Buddy).
 
 ## How it plays
 
@@ -66,6 +68,7 @@ Tap a creature on a home pedestal to hear it and see its idle animation.
 5. Spend cash on Run Speed, Rope Reach (each zone's hooks need a longer rope), Swing Power, Carry Slots and Base Pedestals.
 6. Golden Waves wash up rarer creatures and more mutations; Big Waves are faster and higher but leave a rare creature behind.
 7. Rebirth resets cash and upgrades for a permanent cash multiplier.
+8. Spare cash buys eggs at the Hatchery (about 4 to 5 minutes of income each at the stage you unlock them), and a Buddy boosts every delivery.
 
 ## Build for CrazyGames
 
@@ -81,7 +84,7 @@ Basic Launch doesn't need the CrazyGames SDK. For Full Launch, uncomment the SDK
 ## Tests
 
 ```bash
-npm test           # unit tests: economy, save migration, quests, daily, gifts, combo, wave, tutorial bot, gap-crossing bot
+npm test           # unit tests: economy, save migration, hatchery and buddy, quests, daily, gifts, combo, wave, tutorial bot, gap-crossing bot
 npm run typecheck
 ```
 

@@ -15,6 +15,8 @@ import type { PlayerInput } from './game/player';
 import { Progression, type ProgressEvent } from './game/progression';
 import { applyReward } from './game/rewards';
 import { buildShopView } from './game/shopView';
+import { activeBuddy, buildHatcheryView, buddyBonus, hatchEgg, inHatcheryZone, setBuddy } from './game/hatchery';
+import { Rng } from './game/rng';
 import { GameSim } from './game/sim';
 import { GameState } from './game/state';
 import { Input } from './input/input';
@@ -85,6 +87,9 @@ export class Game {
   private doneRow: { view: TrackerView; until: number } | null = null;
   private nudge: { left: number; perSec: number } | null = null;
   private pillUp = false;
+  /** Hatchery: egg rolls, and whether the player stood at the stand last frame (open on entry). */
+  private readonly hatchRng = new Rng((Math.random() * 0x100000000) >>> 0);
+  private atHatchery = false;
 
   /** Movement is camera-relative, but while a direction is held we keep the camera angle from when it
    *  was pressed, so the camera can swing behind the player without bending the run (v0.1 behaviour). */
@@ -392,6 +397,7 @@ export class Game {
         const v = this.progression.welcome();
         return { ...v, canDouble: v.canDouble && this.platform.hasSdk };
       },
+      hatchery: () => buildHatcheryView(this.state),
     };
   }
 
@@ -483,7 +489,30 @@ export class Game {
       toggleMute: () => this.toggleMute(),
       skipTutorial: () => this.tutorial.skip(),
       panelChanged: (kind, tab) => this.panelChanged(kind, tab),
+      hatchEgg: (zone) => this.hatch(zone),
+      setBuddy: (c) => {
+        if (!setBuddy(state, c)) return;
+        this.audio.play(c ? 'claim' : 'ui.close');
+        if (c) this.hud.toast({ text: `Buddy: +${Math.round(buddyBonus(c) * 100)}% delivery cash`, kind: 'good', icon: 'buddy' });
+        this.save();
+      },
     };
+  }
+
+  /** Hatchery: buy and hatch an egg (the panel plays the wobble, crack and reveal). */
+  private hatch(zone: number): ReturnType<UiActions['hatchEgg']> {
+    const out = hatchEgg(this.state, zone, this.hatchRng, this.sim.featuredSpecies);
+    if (typeof out === 'string') {
+      this.audio.play('ui.denied');
+      return null;
+    }
+    this.audio.play('buy');
+    const rarity = getSpecies(out.ref.speciesId).rarity;
+    // The reveal card opens after the panel's wobble and crack (panels/hatchery.ts timings).
+    window.setTimeout(() => this.audio.play('reveal', { rarity }), this.reduceMotion ? 630 : 2170);
+    if (out.isNewSpecies && rarity >= 4) this.platform.happytime();
+    this.save();
+    return out;
   }
 
   private toggleMute(): void {
@@ -531,6 +560,8 @@ export class Game {
       if (rail.index.visible) toggle('index');
     } else if (k === 'l') {
       if (rail.shop.visible && buildShopView(this.state).lockerUnlocked) toggle('shop', 'locker');
+    } else if (k === 'h') {
+      if (rail.hatchery.visible) toggle('hatchery', open === 'hatchery' ? undefined : 'eggs');
     } else if (k === 'p') {
       toggle('settings');
     } else if (k === 'm') {
@@ -549,11 +580,21 @@ export class Game {
     if (this.paused) return;
     const hit = this.gfx.pick(p);
     if (!hit) return;
+    const state = this.state;
     if (hit.kind === 'pedestal') {
-      const c = this.state.base[hit.index];
+      const c = state.base[hit.index];
       if (!c) return;
       this.gfx.tapPedestal(hit.index);
       this.audio.voice(c.speciesId, 'tap');
+      const buddy = activeBuddy(state);
+      // Offer it as the Buddy when that would raise the delivery bonus.
+      if (state.ftue.done && (!buddy || buddyBonus(c) > buddyBonus(buddy))) {
+        const ref = { ...c };
+        this.hud.toast({
+          text: `${getSpecies(c.speciesId).name} as Buddy: +${Math.round(buddyBonus(c) * 100)}% delivery cash`, kind: 'info', icon: 'buddy',
+          action: { label: 'BUDDY', icon: 'buddy', onTap: () => this.uiActions().setBuddy(ref) },
+        });
+      }
     } else if (buildShopView(this.state).lockerUnlocked) {
       this.openPanel('shop', 'locker');
     }
@@ -635,6 +676,11 @@ export class Game {
         steps++;
       }
       if (steps === MAX_STEPS) this.accumulator = 0;
+      // Walking up to the Hatchery stand opens it (once per visit).
+      const p = sim.player.pos;
+      const atHatch = state.ftue.done && !this.tutorial.active && sim.player.mode === 'ground' && sim.isOnHome() && inHatcheryZone(p.x, p.z);
+      if (atHatch && !this.atHatchery) this.openPanel('hatchery', 'eggs');
+      this.atHatchery = atHatch;
     } else {
       this.input.consumeJumpPressed();
     }
@@ -847,6 +893,8 @@ export class Game {
           const from = this.pedestalOf(placed[0]) ?? this.playerScreen();
           void hud.coinFly(from, e.bonusCash, 'cash');
         }
+        const buddy = activeBuddy(state);
+        if (buddy && e.bonusCash > 0) hud.float(this.playerScreen(2.6), `BUDDY +${Math.round(buddyBonus(buddy) * 100)}%`, 'bonus', 'buddy');
         if (placed.length) {
           const gain = placed.reduce((s, c) => s + creatureIncome(c), 0) * state.multiplier * state.streakBonus;
           hud.toast({ text: `+${formatIncome(gain)} added`, kind: 'good', icon: 'pedestal' });
