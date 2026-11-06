@@ -3,6 +3,7 @@ import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, SEA_RESPAWN_DELAY } from './con
 import { ComboTracker } from './combo';
 import { anchorPosAt, generateCourse, geyserStateAt, zoneAtZ, type Anchor, type Course, type GeyserState, type Island, type Pad } from './course';
 import { creatureIncome, pickSpecies, rollCreature, RARITIES, type CreatureRef } from './creatures';
+import { deliveryMult } from './hatchery';
 import { PlayerSim, type PlayerInput } from './player';
 import { inPerfectWindow, rateRelease } from './predict';
 import { Rng } from './rng';
@@ -345,7 +346,7 @@ export class GameSim {
     const closeCall = this.wave.phase !== 'calm' && this.wave.timeUntilReaches(HOME_FRONT_Z) <= COMBO.closeCallSeconds;
     let income = 0;
     for (const c of carried) income += creatureIncome(c);
-    const bonusCash = income * this.state.multiplier * COMBO.deliverySeconds * chainMult * (closeCall ? COMBO.closeCallMult : 1);
+    const bonusCash = income * this.state.multiplier * COMBO.deliverySeconds * chainMult * (closeCall ? COMBO.closeCallMult : 1) * deliveryMult(this.state);
     const result = this.state.deliver();
     this.state.earn(bonusCash);
     this.events.push({ type: 'deliver', result, bonusCash, chainMult, tripBest, closeCall });

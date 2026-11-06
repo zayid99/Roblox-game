@@ -34,6 +34,7 @@ export interface Stats {
   closeCalls: number; collects: number; collectsByRarity: number[] /* 7 */;
   mutatedCollects: number; goldenBatchCollects: number; cashEarned: number; upgradesBought: number;
   seaFalls: number; splashes: number; bounces: number; giftsClaimed: number; playSec: number;
+  eggsHatched: number;
 }
 export type StatKey = { [K in keyof Stats]: Stats[K] extends number ? K : never }[keyof Stats];
 
@@ -44,6 +45,7 @@ export function emptyStats(): Stats {
     closeCalls: 0, collects: 0, collectsByRarity: [0, 0, 0, 0, 0, 0, 0],
     mutatedCollects: 0, goldenBatchCollects: 0, cashEarned: 0, upgradesBought: 0,
     seaFalls: 0, splashes: 0, bounces: 0, giftsClaimed: 0, playSec: 0,
+    eggsHatched: 0,
   };
 }
 
@@ -77,6 +79,8 @@ export interface SaveDataV2 {
   stats: Stats;
   indexClaims: string[]; indexSeen: string[]; hintsSeen: string[];
   featuredWeekSeen: string;
+  /** Hatchery Buddy (a base creature that follows the player); missing in older v2 saves. */
+  buddy?: CreatureRef | null;
 }
 
 /** The v0.1 save shape. */
@@ -187,6 +191,7 @@ export function migrateV1(raw: object): SaveDataV2 {
     indexSeen: [],
     hintsSeen: [],
     featuredWeekSeen: '',
+    buddy: null,
   };
 }
 
@@ -217,6 +222,8 @@ export class GameState {
   indexSeen: string[] = [];
   hintsSeen: string[] = [];
   featuredWeekSeen = '';
+  /** Hatchery Buddy (game/hatchery.ts); only active while that creature is on the base. */
+  buddy: CreatureRef | null = null;
   /** savedAt and lastSeen of the loaded save (0 for a new player). */
   savedAt = 0;
   lastSeen = 0;
@@ -466,6 +473,7 @@ export class GameState {
       indexSeen: [...this.indexSeen],
       hintsSeen: [...this.hintsSeen],
       featuredWeekSeen: this.featuredWeekSeen,
+      buddy: this.buddy ? { ...this.buddy } : null,
     };
   }
 
@@ -545,6 +553,7 @@ export class GameState {
     this.indexSeen = strArr(d.indexSeen);
     this.hintsSeen = strArr(d.hintsSeen);
     this.featuredWeekSeen = str(d.featuredWeekSeen, '');
+    this.buddy = isValidRef(d.buddy) ? { speciesId: d.buddy.speciesId, mutation: d.buddy.mutation } : null;
     return true;
   }
 }
