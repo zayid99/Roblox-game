@@ -13,6 +13,7 @@ import {
   UPGRADES, baseSlots, bulkCost, carryCapacity, offlineEarnings, reachGateLevel, type UpgradeKey,
 } from '../src/game/economy';
 import { GIFTS } from '../src/game/gifts';
+import { eggCost, eggUnlocked } from '../src/game/hatchery';
 import { VOYAGE } from '../src/game/quests';
 import { applyReward, minutes, resolveReward } from '../src/game/rewards';
 import { Rng } from '../src/game/rng';
@@ -27,18 +28,18 @@ import { STEPS } from '../src/tutorial/steps';
  * TYPICAL_GOLDEN_SHARE are calibrated so this sim's zone and rebirth times match the full model within a session.
  */
 export const TYPICAL_TRIP_SEC: readonly number[] = [15, 35, 62, 113, 167, 222, 261];
-export const TYPICAL_TRIP_SHARE = 0.85;
+export const TYPICAL_TRIP_SHARE = 0.75;
 /**
  * How well the typical player times trips to bring home a Golden Wave's batch: a trip spanning a whole golden
  * cycle (WAVE.goldenEvery waves) catches one this often; shorter trips proportionally less.
  */
-export const TYPICAL_GOLDEN_SHARE = 0.35;
+export const TYPICAL_GOLDEN_SHARE = 0.5;
 /** FTUE of the typical player (tutorial bot + human overhead): first delivery and end of the tutorial, in seconds. */
 export const TYPICAL_FTUE = { firstDeliverSec: 43, doneSec: 108 };
 
 export interface PacingOptions {
   seed?: number;
-  /** Minutes per session; sessions are a day apart (the offline cap applies). 0 = one long session. */
+  /** Minutes per session; sessions are a day apart (Welcome Back, Daily, fresh gifts). 0 (default) = one sitting. */
   sessionMin?: number;
   maxPlayMin?: number;
   /** Stop after this many rebirths. */
@@ -48,6 +49,8 @@ export interface PacingOptions {
   /** Player model overrides (calibration). */
   tripShare?: number;
   goldenShare?: number;
+  /** Trip time multiplier: about 1.5 for a casual player (slower, more sea falls), 0.75 for a skilled one. */
+  tripTimeMult?: number;
 }
 
 export interface Purchase {
@@ -73,6 +76,16 @@ export interface PacingResult {
   endSec: number;
   /** Base income ($/s) at the end of each minute of play. */
   incomeByMinute: number[];
+  /** Most zone gates bought with one Welcome Back (right at a session start) during the first climb. */
+  maxGatesPerWelcome: number;
+  /**
+   * Longest stretches (seconds) with nothing worthwhile affordable and nothing bought, in the first hour and from
+   * then to the first rebirth. Worthwhile: the next Rope Reach level, Run Speed / Swing Power while a level costs
+   * <= 5 min of income, the best reachable zone's egg while it costs <= 6 min of income, or any upgrade level the
+   * shopping rule would buy (payback <= 15 min).
+   */
+  nothingAffordableFirstHour: number;
+  nothingAffordableLater: number;
 }
 
 const LAST_ZONE = ZONES.length - 1;
@@ -99,12 +112,12 @@ const tailGain = (z: number, t: number) => zoneSample[z].reduce((a, x) => a + Ma
 
 export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   const seed = opts.seed ?? 1;
-  const sessionSec = (opts.sessionMin ?? 12) * 60 || Infinity;
+  const sessionSec = (opts.sessionMin ?? 0) * 60 || Infinity;
   const maxPlay = (opts.maxPlayMin ?? 12 * 60) * 60;
   const maxRebirths = opts.maxRebirths ?? 6;
   const daily = sessionSec < Infinity;
-  /** Income-seconds per play second: daily sessions also bring the offline hour. */
-  const k = daily ? (sessionSec + ECONOMY.offlineCapSeconds) / sessionSec : 1;
+  /** Income-seconds per play second: daily sessions also bring the Welcome Back. */
+  const k = daily ? (sessionSec + ECONOMY.offlineRate * ECONOMY.offlineCapSeconds) / sessionSec : 1;
   const rng = new Rng(seed * 7919 + 13);
   const s = new GameState();
   const res: PacingResult = {
@@ -117,7 +130,19 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
     firstDeliverSec: TYPICAL_FTUE.firstDeliverSec,
     endSec: 0,
     incomeByMinute: [],
+    maxGatesPerWelcome: 0,
+    nothingAffordableFirstHour: 0,
+    nothingAffordableLater: 0,
   };
+  /** Last moment something worthwhile was affordable or bought. */
+  let lastOk = 0;
+  const noteStretch = (until: number) => {
+    const len = until - lastOk;
+    if (lastOk < 3600) res.nothingAffordableFirstHour = Math.max(res.nothingAffordableFirstHour, len);
+    else if (s.rebirths === 0) res.nothingAffordableLater = Math.max(res.nothingAffordableLater, len);
+  };
+  let welcomeAt = -1;
+  let welcomeGates = 0;
   let play = 0;
   let sessionStart = 0;
   let session = 1;
@@ -137,6 +162,9 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   };
   const record = (item: string, cost: number) => {
     res.purchases.push({ t: play, item, cost });
+    noteStretch(play);
+    lastOk = play;
+    if (play === welcomeAt && s.rebirths === 0 && item.includes('gate')) res.maxGatesPerWelcome = Math.max(res.maxGatesPerWelcome, ++welcomeGates);
     const z = reachableZone(s);
     for (let i = 1; i <= z; i++) {
       if (Number.isNaN(res.gate[i])) {
@@ -183,7 +211,8 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   // Short trips still have to fit between waves: at most one per wave cycle.
   const tripShare = opts.tripShare ?? TYPICAL_TRIP_SHARE;
   const goldenShare = opts.goldenShare ?? TYPICAL_GOLDEN_SHARE;
-  const tripPlaySec = (z: number) => Math.max(WAVE.interval, TYPICAL_TRIP_SEC[z] / tripShare);
+  const tripMult = opts.tripTimeMult ?? 1;
+  const tripPlaySec = (z: number) => Math.max(WAVE.interval, (TYPICAL_TRIP_SEC[z] * tripMult) / tripShare);
 
   /** One step of the shopping rule. Returns true if something was bought. */
   const shopOnce = (): boolean => {
@@ -264,6 +293,35 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
     return false;
   };
 
+  /** Cheapest worthwhile item on sale now (see nothingAffordable*), or Infinity. */
+  const cheapestWorthwhile = (): number => {
+    const inc = Math.max(1e-9, s.incomePerSec());
+    let best = Infinity;
+    if (!s.isMaxed('reach')) best = Math.min(best, s.upgradeCost('reach'));
+    for (const key of ['speed', 'power'] as UpgradeKey[]) if (!s.isMaxed(key) && s.upgradeCost(key) <= inc * 300) best = Math.min(best, s.upgradeCost(key));
+    const z = reachableZone(s);
+    if (eggUnlocked(s, z) && eggCost(s, z) <= inc * 360) best = Math.min(best, eggCost(s, z));
+    for (const key of ['slots', 'carry'] as UpgradeKey[]) {
+      if (s.isMaxed(key)) continue;
+      const mean = zoneMean[z] * s.multiplier * s.streakBonus;
+      const perSec = key === 'slots' ? 2 * mean : (mean * (ECONOMY.sellSeconds + COMBO.deliverySeconds * 1.5)) / tripPlaySec(z);
+      if (s.upgradeCost(key) / perSec / k <= 900) best = Math.min(best, s.upgradeCost(key));
+    }
+    return best;
+  };
+  /** Marks when, during the next `sec` seconds of income, something worthwhile becomes affordable. */
+  const watchAffordable = (sec: number) => {
+    const need = cheapestWorthwhile() - s.cash;
+    const inc = s.incomePerSec();
+    if (need <= 0) {
+      noteStretch(play);
+      lastOk = play + sec;
+    } else if (inc > 0 && need / inc <= sec) {
+      noteStretch(play + need / inc);
+      lastOk = play + sec;
+    }
+  };
+
   const trip = () => {
     const z = reachableZone(s);
     // Golden batch (every WAVE.goldenEvery-th wave of a session): players time their trips to bring some home.
@@ -288,6 +346,7 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
     if (z >= 1) s.counters.padLaunchesInWave = Math.max(1, s.counters.padLaunchesInWave);
     if (Number.isNaN(res.incomeAtVisit[z])) res.incomeAtVisit[z] = s.incomePerSec();
     s.bestZone = Math.max(s.bestZone, z);
+    watchAffordable(tripPlaySec(z));
     advance(tripPlaySec(z));
     let income = 0;
     for (const c of s.carried) income += creatureIncome(c);
@@ -311,10 +370,13 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
       sessionStart = play;
       giftsClaimed = 0;
       claimDaily();
+      welcomeAt = play;
+      welcomeGates = 0;
       continue;
     }
     trip();
   }
+  noteStretch(play);
   res.endSec = play;
   return res;
 }

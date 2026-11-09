@@ -1,83 +1,105 @@
 // Pacing regression test: the zone ladder, rebirth cycles and egg prices must stay where the balance pass put them.
 // tests/pacingSim.ts plays the real economy (GameState, rolls, rewards, offline earnings) with the measured trip
-// times of a typical player in 12-minute daily sessions. Bands are minutes of play; see the balance spec for targets.
+// times of a typical player. The primary case is ONE continuous sitting (most CrazyGames players never come back);
+// the daily-session pattern (12-minute sessions + Welcome Back) is checked more loosely. Bands are minutes of play.
 import { describe, expect, it } from 'vitest';
+import { ECONOMY } from '../src/game/config';
 import { REBIRTH, UPGRADES, UPGRADE_ORDER, bulkCost, formatNumber, reachGateLevel, rebirthCost, rebirthMultiplier } from '../src/game/economy';
 import { EGGS, EGG_MINUTES, STAGE_INCOME, eggCost, eggPrice } from '../src/game/hatchery';
 import { ZONES } from '../src/game/zones';
-import { TYPICAL_FTUE, simulatePacing } from './pacingSim';
+import { TYPICAL_FTUE, simulatePacing, type PacingResult } from './pacingSim';
 
 const SEEDS = [1, 2, 3, 4, 5, 6, 7];
-const runs = SEEDS.map((seed) => simulatePacing({ seed }));
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)];
 };
-/** Median minutes of play at which zone z's gate was bought. */
-const gateMin = (z: number) => median(runs.map((r) => r.gate[z] / 60));
 const LAST = ZONES.length - 1;
+/** Median minutes of play at which zone z's gate was bought. */
+const gateMin = (rs: PacingResult[], z: number) => median(rs.map((r) => r.gate[z] / 60));
 /** Cost of the Rope Reach levels from zone z's gate to zone z + 1's gate. */
 const nextGateCost = (z: number) => bulkCost('reach', reachGateLevel(z), reachGateLevel(z + 1) - reachGateLevel(z));
+/** Longest gap (minutes) between purchase moments within the first `limitMin` minutes. */
+const longestGap = (r: PacingResult, fromMin: number, limitMin: number) => {
+  const ts = [fromMin * 60, ...new Set(r.purchases.filter((p) => p.t >= fromMin * 60 && p.t <= limitMin * 60).map((p) => Math.round(p.t)))].sort((a, b) => a - b);
+  let g = 0;
+  for (let i = 1; i < ts.length; i++) g = Math.max(g, ts[i] - ts[i - 1]);
+  return g / 60;
+};
 
-describe('pacing: typical player, 12-minute daily sessions', () => {
+const sitting = SEEDS.map((seed) => simulatePacing({ seed, maxPlayMin: 8 * 60 }));
+
+describe('pacing: typical player, one continuous sitting', () => {
   it('delivers the first creature within 90 s and opens Coral Reef in the tutorial', () => {
     expect(TYPICAL_FTUE.firstDeliverSec).toBeLessThanOrEqual(90);
-    expect(gateMin(1)).toBeLessThanOrEqual(5);
+    expect(gateMin(sitting, 1)).toBeLessThanOrEqual(5);
   });
 
-  it('opens Lagoon in the first session and Stormy Seas by the second', () => {
-    expect(gateMin(2)).toBeLessThanOrEqual(12);
-    expect(gateMin(3)).toBeLessThanOrEqual(24);
-    for (const r of runs) expect(r.gate[3] / 60).toBeLessThanOrEqual(30);
+  it('opens Lagoon by ~12 min and Stormy Seas at ~20-28 min', () => {
+    expect(gateMin(sitting, 2)).toBeLessThanOrEqual(12);
+    expect(gateMin(sitting, 3)).toBeGreaterThanOrEqual(18);
+    expect(gateMin(sitting, 3)).toBeLessThanOrEqual(28);
   });
 
-  it('spreads the later zones over the first week', () => {
-    const z5 = gateMin(4);
-    const z6 = gateMin(5);
-    const z7 = gateMin(LAST);
-    expect(z5).toBeGreaterThanOrEqual(36);
-    expect(z5).toBeLessThanOrEqual(60);
-    expect(z6).toBeGreaterThanOrEqual(66);
-    expect(z6).toBeLessThanOrEqual(100);
-    expect(z7).toBeGreaterThanOrEqual(115);
-    expect(z7).toBeLessThanOrEqual(165);
+  it('opens Kraken Deep at ~40-55, Volcano Bay at ~70-90 and Secret Reef at ~120-150 min', () => {
+    const bands: [number, number, number][] = [[4, 40, 58], [5, 70, 95], [LAST, 115, 155]];
+    for (const [z, lo, hi] of bands) {
+      expect(gateMin(sitting, z)).toBeGreaterThanOrEqual(lo);
+      expect(gateMin(sitting, z)).toBeLessThanOrEqual(hi);
+    }
   });
 
-  it('reaches the first rebirth after about 2.5 to 3.5 hours of play', () => {
-    const r1 = median(runs.map((r) => (r.rebirths[0] ?? Infinity) / 60));
+  it('reaches the first rebirth after about 2.5 to 3.5 hours', () => {
+    const r1 = median(sitting.map((r) => (r.rebirths[0] ?? Infinity) / 60));
     expect(r1).toBeGreaterThanOrEqual(150);
-    expect(r1).toBeLessThanOrEqual(220);
+    expect(r1).toBeLessThanOrEqual(215);
   });
 
-  it('offers a purchase every couple of minutes in the first 15 minutes', () => {
-    const gaps = runs.map((r) => {
-      const ts = [...new Set(r.purchases.filter((p) => p.t <= 900).map((p) => Math.round(p.t)))].sort((a, b) => a - b);
-      let g = 0;
-      for (let i = 1; i < ts.length; i++) g = Math.max(g, ts[i] - ts[i - 1]);
-      return g / 60;
-    });
-    expect(median(gaps)).toBeLessThanOrEqual(2.5);
-    for (const g of gaps) expect(g).toBeLessThanOrEqual(4);
+  it('always has something worthwhile affordable: gaps <= 3 min in the first hour, <= 5 min until the first rebirth', () => {
+    expect(median(sitting.map((r) => longestGap(r, 0, 15)))).toBeLessThanOrEqual(3);
+    for (const r of sitting) {
+      expect(r.nothingAffordableFirstHour / 60).toBeLessThanOrEqual(3);
+      expect(r.nothingAffordableLater / 60).toBeLessThanOrEqual(5);
+    }
   });
 
   it('buys every upgrade level before the first rebirth (no dead levels)', () => {
-    for (const r of runs) {
+    for (const r of sitting) {
       for (const key of UPGRADE_ORDER) expect(`${key} ${r.levelsBeforeRebirth[key]}`).toBe(`${key} ${UPGRADES[key].maxLevel}`);
     }
   });
 
-  it('makes each rebirth cycle shorter for five cycles without making it trivial', () => {
-    const cycles = [0, 1, 2, 3, 4].map((n) => median(runs.map((r) => (r.rebirths[n] - (n ? r.rebirths[n - 1] : 0)) / 60)));
-    for (let n = 1; n < cycles.length; n++) expect(cycles[n]).toBeLessThan(cycles[n - 1]);
-    // About 30% faster each cycle on average (0.7^4 = 0.24), and the fifth still takes a few sessions.
-    expect(cycles[4] / cycles[0]).toBeGreaterThan(0.12);
-    expect(cycles[4] / cycles[0]).toBeLessThan(0.45);
-    expect(cycles[4]).toBeGreaterThanOrEqual(24);
+  it('makes the next climb clearly faster after a rebirth', () => {
+    const long = SEEDS.map((seed) => simulatePacing({ seed, maxPlayMin: 10 * 60, maxRebirths: 3 }));
+    const c1 = median(long.map((r) => r.rebirths[0] / 60));
+    const c2 = median(long.map((r) => (r.rebirths[1] - r.rebirths[0]) / 60));
+    const c3 = median(long.map((r) => (r.rebirths[2] - r.rebirths[1]) / 60));
+    expect(c2 / c1).toBeLessThan(0.85);
+    expect(c3 / c2).toBeLessThan(0.9);
+    expect(c3).toBeGreaterThanOrEqual(30);
   });
 
-  it('opens Stormy Seas within about half an hour of one long first session too', () => {
-    const long = SEEDS.map((seed) => simulatePacing({ seed, sessionMin: 0, maxPlayMin: 60 }));
-    expect(median(long.map((r) => r.gate[3] / 60))).toBeLessThanOrEqual(30);
+  it('gets casual players to Stormy Seas within ~35 min and skilled players there clearly sooner', () => {
+    const casual = SEEDS.map((seed) => simulatePacing({ seed, maxPlayMin: 4 * 60, maxRebirths: 1, tripTimeMult: 1.5 }));
+    const skilled = SEEDS.map((seed) => simulatePacing({ seed, maxPlayMin: 5 * 60, maxRebirths: 1, tripTimeMult: 0.75 }));
+    expect(gateMin(casual, 3)).toBeLessThanOrEqual(35);
+    expect(gateMin(skilled, LAST)).toBeLessThanOrEqual(0.9 * gateMin(sitting, LAST));
+  });
+});
+
+describe('pacing: 12-minute daily sessions with Welcome Back', () => {
+  const daily = SEEDS.map((seed) => simulatePacing({ seed, sessionMin: 12, maxPlayMin: 6 * 60, maxRebirths: 2 }));
+
+  it('is a bonus, not the main income: offline earns a fraction of base income, capped', () => {
+    expect(ECONOMY.offlineRate).toBeGreaterThan(0);
+    expect(ECONOMY.offlineRate).toBeLessThanOrEqual(0.25);
+  });
+
+  it('is somewhat faster per minute played, but never lets one Welcome Back open two zones', () => {
+    for (const r of daily) expect(r.maxGatesPerWelcome).toBeLessThanOrEqual(1);
+    expect(gateMin(daily, 3)).toBeLessThanOrEqual(24);
+    expect(gateMin(daily, LAST)).toBeLessThanOrEqual(gateMin(sitting, LAST));
+    expect(gateMin(daily, LAST)).toBeGreaterThanOrEqual(0.35 * gateMin(sitting, LAST));
   });
 });
 
@@ -92,7 +114,7 @@ describe('eggs and zone gates', () => {
     // STAGE_INCOME must track the simulated income when each zone is first reached, within a factor of 3 (income
     // grows fast right then: the first Coral Reef trip alone takes it from $2/s to about $15/s).
     for (let z = 1; z < ZONES.length; z++) {
-      const income = median(runs.map((r) => r.incomeAtVisit[z]));
+      const income = median(sitting.map((r) => r.incomeAtVisit[z]));
       expect(STAGE_INCOME[z] / income).toBeGreaterThan(1 / 3);
       expect(STAGE_INCOME[z] / income).toBeLessThan(3);
     }

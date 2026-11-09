@@ -76,6 +76,8 @@ export const SEA_RESPAWN_DELAY = 0.6;
 
 export const ECONOMY = {
   offlineCapSeconds: 60 * 60,
+  /** Share of base income earned while away (Welcome Back): a bonus for coming back, not the main income. */
+  offlineRate: 0.15,
   sellSeconds: 30,
   spawnChance: 0.7,
 };

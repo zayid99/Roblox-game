@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ECONOMY } from '../src/game/config';
 import { creatureIncome, rollCreature, RARITIES, SPECIES } from '../src/game/creatures';
 import { REBIRTH, formatCash, offlineEarnings, upgradeCost, UPGRADES, UPGRADE_ORDER } from '../src/game/economy';
 import { Rng } from '../src/game/rng';
@@ -107,8 +108,8 @@ describe('game state', () => {
   });
 
   it('pays offline earnings up to the cap', () => {
-    expect(offlineEarnings(10, 60)).toBe(600);
-    expect(offlineEarnings(10, 10 * 3600)).toBe(36000);
+    expect(offlineEarnings(10, 60)).toBeCloseTo(600 * ECONOMY.offlineRate);
+    expect(offlineEarnings(10, 10 * 3600)).toBeCloseTo(36000 * ECONOMY.offlineRate);
     expect(offlineEarnings(10, -5)).toBe(0);
   });
 

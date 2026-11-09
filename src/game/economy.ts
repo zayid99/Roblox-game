@@ -30,10 +30,10 @@ export function reachGateLevel(zone: number): number {
 }
 
 /*
- * Prices follow the zone ladder (see tests/pacing.test.ts): Rope Reach pairs are the zone gates (Coral Reef $40 is
- * bought in the tutorial; Lagoon $20K, Stormy Seas $300K, Kraken Deep $14M, Volcano Bay $80M, Secret Reef $500M).
- * Carry Slots and Base Pedestals are priced by what one more creature earns in the zone where they are bought, so
- * every level pays for itself within about an hour of income. Run Speed and Swing Power are cheap "feel" levels
+ * Prices follow the zone ladder of one continuous sitting (see tests/pacing.test.ts): Rope Reach pairs are the zone
+ * gates (Coral Reef $40 is bought in the tutorial; Lagoon $20K, Stormy Seas $300K, Kraken Deep $1.6M, Volcano Bay
+ * $6M, Secret Reef $40M). Carry Slots and Base Pedestals are priced by what one more creature earns in the zone where
+ * they are bought, so every level pays for itself within about 15 minutes of play. Run Speed and Swing Power are cheap "feel" levels
  * spread across the whole climb (each costs about 1-2 minutes of the income a player has when it comes up).
  */
 export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
@@ -55,7 +55,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     desc: 'Grab hooks from farther away',
     // Capped at the last zone's gate: more reach would unlock nothing.
     maxLevel: reachGateLevel(ZONES.length - 1),
-    costs: [40, 150, 20_000, 90_000, 210_000, 4_000_000, 10_000_000, 25_000_000, 55_000_000, 150_000_000, 350_000_000],
+    costs: [40, 150, 20_000, 90_000, 210_000, 500_000, 1_100_000, 2_000_000, 4_000_000, 12_000_000, 28_000_000],
     value: reachAt,
     format: (v) => `${v.toFixed(1)} m`,
   },
@@ -76,7 +76,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     iconId: 'carry',
     desc: 'Carry more creatures per run',
     maxLevel: 6,
-    costs: [150, 3_000, 30_000, 250_000, 700_000, 1_200_000],
+    costs: [150, 2_000, 10_000, 40_000, 100_000, 200_000],
     value: (l) => 2 + l,
     format: (v) => `${v}`,
   },
@@ -86,7 +86,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     iconId: 'pedestal',
     desc: 'Room for more creatures at home',
     maxLevel: 8,
-    costs: [100, 1_000, 40_000, 400_000, 1_500_000, 5_000_000, 8_000_000, 12_000_000],
+    costs: [100, 1_000, 25_000, 120_000, 300_000, 800_000, 1_500_000, 2_000_000],
     value: (l) => 4 + 2 * l,
     format: (v) => `${v}`,
   },
@@ -161,7 +161,7 @@ export function baseSlots(levels: UpgradeLevels): number {
  * of the best creatures stay on the base (the rest swim free, unpaid).
  */
 export const REBIRTH = {
-  baseCost: 1_200_000_000,
+  baseCost: 150_000_000,
   costGrowth: 1.1,
   costAccel: 1.05,
   multGrowth: 2,
@@ -195,7 +195,7 @@ export function rebirthMultiplier(rebirths: number): number {
 
 export function offlineEarnings(incomePerSec: number, elapsedSec: number): number {
   if (!(elapsedSec > 0) || !(incomePerSec > 0)) return 0;
-  return incomePerSec * Math.min(elapsedSec, ECONOMY.offlineCapSeconds);
+  return incomePerSec * ECONOMY.offlineRate * Math.min(elapsedSec, ECONOMY.offlineCapSeconds);
 }
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];

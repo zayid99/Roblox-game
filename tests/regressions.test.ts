@@ -130,6 +130,8 @@ describe('save loading', () => {
 });
 
 describe('offline time', () => {
+  /** Offline time earns this share of base income. */
+  const R = ECONOMY.offlineRate;
   function returning(awaySec: number): GameState {
     const s = new GameState();
     s.ftue.done = true;
@@ -142,24 +144,24 @@ describe('offline time', () => {
   it('an uncollected Welcome Back survives a reload', () => {
     const s = returning(600);
     const p = new Progression(s, new ManualClock(T0));
-    expect(p.offline).toBeCloseTo(1800);
+    expect(p.offline).toBeCloseTo(1800 * R);
     // The card is open (paused, autosaves run), then the tab is reloaded 10 s later.
     const s2 = reload(s, T0 + 5000);
     const p2 = new Progression(s2, new ManualClock(T0 + 10_000));
-    expect(p2.offline).toBeCloseTo(3 * 610);
+    expect(p2.offline).toBeCloseTo(3 * 610 * R);
     p2.collectWelcome(false);
     // Once collected, the next session starts from the save again.
     const s3 = reload(s2, T0 + 20_000);
     const p3 = new Progression(s3, new ManualClock(T0 + 30_000));
-    expect(p3.offline).toBeCloseTo(10 * s3.baseIncomePerSec()); // the claimed Daily added +1% streak income
+    expect(p3.offline).toBeCloseTo(10 * s3.baseIncomePerSec() * R); // the claimed Daily added +1% streak income
   });
 
   it('keeps the 1 h cap across reloads', () => {
     const s = returning(3 * 3600);
     const p = new Progression(s, new ManualClock(T0));
-    expect(p.offline).toBeCloseTo(3 * ECONOMY.offlineCapSeconds);
+    expect(p.offline).toBeCloseTo(3 * ECONOMY.offlineCapSeconds * R);
     const p2 = new Progression(reload(s, T0 + 60_000), new ManualClock(T0 + 120_000));
-    expect(p2.offline).toBeCloseTo(3 * ECONOMY.offlineCapSeconds);
+    expect(p2.offline).toBeCloseTo(3 * ECONOMY.offlineCapSeconds * R);
   });
 
   it('a background tab earns its time away on return (1 h cap)', () => {
@@ -169,12 +171,12 @@ describe('offline time', () => {
     const cash0 = s.cash;
     p.markAway();
     clock.advance(30 * 60_000);
-    expect(p.creditAway()).toBeCloseTo(3 * 1800);
-    expect(s.cash - cash0).toBeCloseTo(3 * 1800);
+    expect(p.creditAway()).toBeCloseTo(3 * 1800 * R);
+    expect(s.cash - cash0).toBeCloseTo(3 * 1800 * R);
     expect(p.creditAway()).toBe(0); // paid once
     p.markAway();
     clock.advance(5 * 3600_000);
-    expect(p.creditAway()).toBeCloseTo(3 * ECONOMY.offlineCapSeconds);
+    expect(p.creditAway()).toBeCloseTo(3 * ECONOMY.offlineCapSeconds * R);
   });
 
   it('closing a hidden tab still pays the hidden time next session', () => {
@@ -185,7 +187,7 @@ describe('offline time', () => {
     clock.advance(20 * 60_000);
     const s2 = reload(s, clock.now()); // pagehide save 20 min later
     const p2 = new Progression(s2, new ManualClock(clock.now() + 10 * 60_000));
-    expect(p2.offline).toBeCloseTo(3 * 30 * 60);
+    expect(p2.offline).toBeCloseTo(3 * 30 * 60 * R);
   });
 
   it('a pending Welcome Back keeps its own start while the tab is hidden', () => {
@@ -195,7 +197,7 @@ describe('offline time', () => {
     p.markAway();
     clock.advance(60_000);
     expect(p.creditAway()).toBe(0);
-    expect(p.offline).toBeCloseTo(1800);
+    expect(p.offline).toBeCloseTo(1800 * R);
   });
 });
 

@@ -19,11 +19,11 @@ export function inHatcheryZone(x: number, z: number): boolean {
 }
 
 /**
- * Typical income ($/s) when each zone is first reached, before rebirths: the pacing model's typical player
+ * Typical income ($/s) when each zone is first reached in one sitting, before rebirths (the pacing model)
  * (tests/pacing.test.ts checks these stay in line). Egg prices are EGG_MINUTES of it, so a zone's egg is a
  * few minutes of income when the zone opens and gets cheaper as the base fills up.
  */
-export const STAGE_INCOME: readonly number[] = [2, 6, 50, 250, 1800, 10_000, 37_000];
+export const STAGE_INCOME: readonly number[] = [2, 6, 50, 450, 1400, 6500, 23_000];
 /** Egg price in minutes of the stage income above (spec: 3 to 6 minutes). */
 export const EGG_MINUTES = 4.5;
 

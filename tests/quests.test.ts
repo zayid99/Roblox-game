@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { ECONOMY } from '../src/game/config';
 import type { SimEvent, WildCreature } from '../src/contracts';
 import { ManualClock } from '../src/game/clock';
 import { Progression, type ProgressEvent } from '../src/game/progression';
@@ -204,12 +205,12 @@ describe('Progression facade', () => {
     const p = new Progression(state, new ManualClock(T0));
     expect(p.shouldShowWelcome()).toBe(true);
     const w = p.welcome();
-    expect(w.offline).toBeCloseTo(1800);
+    expect(w.offline).toBeCloseTo(1800 * ECONOMY.offlineRate);
     expect(w.daily?.day).toBe(1);
     expect(w.pendingGifts).toEqual([{ pearls: 10 }]);
     expect(w.canDouble).toBe(true);
     const r = p.collectWelcome(true);
-    expect(r.cash).toBeCloseTo(3600 + Math.round(3 * 60 * 3));
+    expect(r.cash).toBeCloseTo(2 * 1800 * ECONOMY.offlineRate + Math.round(3 * 60 * 3));
     expect(r.pearls).toBe(20);
     expect(p.offline).toBe(0);
     expect(p.shouldShowWelcome()).toBe(false);
