@@ -145,6 +145,8 @@ export class GameRenderer {
   private readonly worldFrame = { time: 0, dt: 0, targetId: -1, danger: 0, player: new Vector3(), shopArrow: false, reach: 0 };
   private creatureFrame: CreatureFrame | null = null;
   private buddyFrame: BuddyFrame | null = null;
+  /** Island top under a point (0 over open sea), for the camera floor. */
+  private readonly solidAt = (x: number, z: number, y: number): number => (this.course ? groundHeightAt(this.course, x, z, y) : 0);
   /** Island top under a point, or the sea surface. */
   private readonly groundAt = (x: number, z: number, y: number): number => {
     const g = this.course ? groundHeightAt(this.course, x, z, y) : 0;
@@ -607,7 +609,7 @@ export class GameRenderer {
       const d = Math.abs(wave.frontZ - player.pos.z);
       if (d < 25) this.rig.holdTrauma(0.15 * (1 - d / 25));
     }
-    this.rig.update(dt, player.pos, player.vel, t, player.mode !== 'ground', follow, swinging);
+    this.rig.update(dt, player.pos, player.vel, t, player.mode !== 'ground', follow, swinging, this.solidAt);
     this.camera.updateMatrixWorld();
     this.camera.getWorldDirection(fwd);
     this.updateSeeThrough(player.pos, splashed);

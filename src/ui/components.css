@@ -438,3 +438,14 @@
 @media (prefers-reduced-motion: reduce) {
   .wiggle, .up-arrow, .new-st.bob, .sunburst, .twinkle, .btn--shine::after, .shine-sweep::after, .fx-shake { animation: none !important; }
 }
+/* Endless loops elsewhere (spinning reveal burst, swing ring, the 4 Hz LET GO flash, bobbing arrows, pulsing day
+   cards, bouncing gifts, crawling bar stripes, the logo in Settings): still under reduce motion. One-shot
+   entrances keep a plain fade. Both the in-game setting (.reduce-motion) and the OS setting. */
+.reduce-motion .act .act-ring, .reduce-motion .act[data-mode="letgo"], .reduce-motion .edge .eg-arrow svg,
+.reduce-motion .dt.st-today, .reduce-motion .gf.st-ready .gf-box, .reduce-motion .stripes,
+.reduce-motion .logo .lg-swing, .reduce-motion .logo .lg-drip { animation: none !important; }
+.reduce-motion .reveal-big .rb-burst, .reduce-motion .reveal-big .rb-por { animation: fadeIn 200ms both !important; }
+@media (prefers-reduced-motion: reduce) {
+  .act .act-ring, .act[data-mode="letgo"], .edge .eg-arrow svg, .dt.st-today, .gf.st-ready .gf-box, .stripes { animation: none !important; }
+  .reveal-big .rb-burst, .reveal-big .rb-por { animation: fadeIn 200ms both !important; }
+}

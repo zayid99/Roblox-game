@@ -390,13 +390,16 @@ export class GameplayObjects {
           this.stoneWarn[i] = warn;
           this.stoneMesh.setColorAt(i, tmpC.set(STONE_TINT[st.zone] ?? '#FFFFFF').lerp(STONE_HOT, warn * 0.8));
           stoneColorsDirty = true;
-        } else if (phase === 'sunk') {
+        }
+        // (The offsets used to hang off the colour branch with `else if`, so the frame the tint changed, e.g.
+        // shaking → sunk, the stone popped back up to the surface for one frame.)
+        if (phase === 'sunk') {
           dy = -Math.min(1, t / 0.5) * 7;
           tilt = Math.min(1, t / 0.5) * 0.25;
         } else if (phase === 'rising') {
           const k = Math.min(1, t / CRUMBLE.rise);
           dy = -7 * (1 - k * k * (3 - 2 * k));
-        } else {
+        } else if (phase === 'solid') {
           dy = Math.sin(time * 1.4 + st.id) * 0.03;
         }
         q.setFromAxisAngle(v.set(1, 0, 0.6).normalize(), tilt);

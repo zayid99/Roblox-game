@@ -49,6 +49,7 @@ export class CameraRig {
   private kickBTau = 0.15;
   private lastFov = 0;
   private shakeT = 0;
+  private floor = 0;
 
   constructor(readonly camera: PerspectiveCamera) {}
 
@@ -98,14 +99,26 @@ export class CameraRig {
   reset(focus: Vector3): void {
     this.target.set(focus.x, focus.y + 2.2, focus.z);
     this.ahead.set(0, 0, 0);
+    this.floor = 0;
     this.initialized = true;
   }
 
   /**
    * @param follow how strongly to swing behind the player's motion (0 = never, e.g. mid-swing).
    * @param swinging smaller look-ahead while on the rope.
+   * @param ground island top (or sea) under a point, at or below height y: keeps the lens out of the island the
+   *   player stands on (low pitch on a high island put the camera inside it; the old floor was a flat 0.8 m).
    */
-  update(dt: number, focus: Vector3, vel: Vector3, time: number, airborne: boolean, follow: number, swinging: boolean): void {
+  update(
+    dt: number,
+    focus: Vector3,
+    vel: Vector3,
+    time: number,
+    airborne: boolean,
+    follow: number,
+    swinging: boolean,
+    ground?: (x: number, z: number, y: number) => number,
+  ): void {
     tmpDesired.set(focus.x, focus.y + 2.2, focus.z);
     if (!this.initialized) {
       this.target.copy(tmpDesired);
@@ -129,7 +142,10 @@ export class CameraRig {
 
     const cp = Math.cos(this.pitch);
     tmpPos.set(Math.sin(this.yaw) * cp, Math.sin(this.pitch), Math.cos(this.yaw) * cp).multiplyScalar(this.distance).add(this.target).add(this.ahead);
-    tmpPos.y = Math.max(tmpPos.y, 0.8);
+    // Rises at once (never inside the island), eases down past an island edge (no snap).
+    const floorWant = ground ? Math.max(0, ground(tmpPos.x, tmpPos.z, this.target.y)) : 0;
+    this.floor = floorWant >= this.floor ? floorWant : this.floor + (floorWant - this.floor) * (1 - Math.exp(-dt * 6));
+    tmpPos.y = Math.max(tmpPos.y, this.floor + 0.8);
     this.camera.position.copy(tmpPos);
     tmpDesired.copy(this.target).add(this.ahead);
     this.camera.lookAt(tmpDesired);

@@ -417,10 +417,15 @@ export class Character {
       ropeDir.y -= 1.2;
       ropeDir.normalize();
       tmpZ.set(sim.facing.x, 0, sim.facing.z);
-      tmpX.crossVectors(ropeDir, tmpZ).normalize();
-      tmpZ.crossVectors(tmpX, ropeDir).normalize();
-      tmpM.makeBasis(tmpX, ropeDir, tmpZ);
-      this.targetQuat.setFromRotationMatrix(tmpM);
+      tmpX.crossVectors(ropeDir, tmpZ);
+      // Rope along the facing (a hook level with the player, straight ahead): the basis is undefined and a NaN
+      // quaternion would hide the player for good (slerp never recovers). Keep last frame's target.
+      if (tmpX.lengthSq() > 1e-8) {
+        tmpX.normalize();
+        tmpZ.crossVectors(tmpX, ropeDir).normalize();
+        tmpM.makeBasis(tmpX, ropeDir, tmpZ);
+        this.targetQuat.setFromRotationMatrix(tmpM);
+      }
     } else {
       this.targetQuat.setFromAxisAngle(UP, yaw);
     }

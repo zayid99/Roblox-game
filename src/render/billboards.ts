@@ -30,12 +30,28 @@ function creatureName(c: CreatureRef): string {
 }
 
 const wildCache = new Map<string, CanvasTexture>();
+/**
+ * Most textures kept (LRU). Species × mutation × chip is ~280 boards of ~220 KB of GPU memory each with mips, and
+ * a long session meets most of them; only the few within billboard range are in use at any time (they are
+ * touched every frame, so they never fall off the end).
+ */
+export const WILD_CACHE_MAX = 32;
 
 /** Wild creature billboard: name plus rarity (and a FEATURED chip). Cached per species, mutation and chip. */
 export function wildBillboard(c: CreatureRef, featured: boolean): CanvasTexture {
   const key = `${c.speciesId}:${c.mutation}:${featured ? 1 : 0}`;
   let t = wildCache.get(key);
-  if (t) return t;
+  if (t) {
+    // Most recently used goes last.
+    wildCache.delete(key);
+    wildCache.set(key, t);
+    return t;
+  }
+  if (wildCache.size >= WILD_CACHE_MAX) {
+    const [oldKey, oldTex] = wildCache.entries().next().value as [string, CanvasTexture];
+    wildCache.delete(oldKey);
+    oldTex.dispose();
+  }
   const cv = document.createElement('canvas');
   cv.width = 320;
   cv.height = 128;
