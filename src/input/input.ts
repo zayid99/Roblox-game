@@ -66,11 +66,13 @@ export class Input {
   private lookDY = 0;
   private zoomDelta = 0;
   private lookPointer: number | null = null;
-  private lastLook = { x: 0, y: 0 };
+  private readonly lastLook = { x: 0, y: 0 };
+  /** Reused by consumeLook() (read right away by the caller, never kept). */
+  private readonly lookOut = { dx: 0, dy: 0, zoom: 0 };
   private tapStart: { id: number; x: number; y: number; t: number } | null = null;
   private joyPointer: number | null = null;
-  private joyOrigin = { x: 0, y: 0 };
-  private joyVec = { x: 0, y: 0 };
+  private readonly joyOrigin = { x: 0, y: 0 };
+  private readonly joyVec = { x: 0, y: 0 };
   private gestured = false;
   private enabled = true;
   private sens = 1;
@@ -92,6 +94,10 @@ export class Input {
     window.addEventListener('keydown', (e) => this.keyDown(e));
     window.addEventListener('keyup', (e) => this.keyUp(e));
     window.addEventListener('blur', () => this.clear());
+    // Mobile browsers can hide the page (app switch, lock screen) without a blur or the matching key/pointer ups.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clear();
+    });
     canvas.addEventListener('pointerdown', (e) => this.pointerDown(e));
     window.addEventListener('pointermove', (e) => this.pointerMove(e));
     window.addEventListener('pointerup', (e) => this.pointerUp(e));
@@ -156,7 +162,11 @@ export class Input {
       this.touchJump = true;
       button.classList.add('is-down');
       button.classList.add('pressed');
-      button.setPointerCapture?.(e.pointerId);
+      try {
+        button.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* pointer already gone, or the cursor is locked: the button still works without capture */
+      }
     };
     const up = () => {
       if (!this.touchJump) return;
@@ -221,12 +231,12 @@ export class Input {
     return p;
   }
 
-  consumeLook(): { dx: number; dy: number; zoom: number } {
-    const out = {
-      dx: this.lookDX * this.sens,
-      dy: this.lookDY * this.sens * (this.invertY ? -1 : 1),
-      zoom: this.zoomDelta,
-    };
+  /** The look input since the last call. The returned object is reused: read it right away. */
+  consumeLook(): { readonly dx: number; readonly dy: number; readonly zoom: number } {
+    const out = this.lookOut;
+    out.dx = this.lookDX * this.sens;
+    out.dy = this.lookDY * this.sens * (this.invertY ? -1 : 1);
+    out.zoom = this.zoomDelta;
     this.lookDX = 0;
     this.lookDY = 0;
     this.zoomDelta = 0;
@@ -256,7 +266,7 @@ export class Input {
     this.joyPointer = null;
     this.lookPointer = null;
     this.tapStart = null;
-    this.joyVec = { x: 0, y: 0 };
+    this.joyVec.x = this.joyVec.y = 0;
     this.joyBase.classList.remove('active');
     for (const b of this.jumpButtons) b.classList.remove('is-down', 'pressed');
   }
@@ -267,17 +277,18 @@ export class Input {
     if (BLOCK_DEFAULT.has(e.code)) e.preventDefault();
     this.gesture();
     this.lastDevice = 'keyboard';
-    if (e.repeat) return;
+    // Auto-repeat of a held key re-arms it after a panel closed (clear() dropped it) without a new jump press.
     if (MOVE_KEYS[e.code]) {
       if (this.enabled) this.keys.add(e.code);
       return;
     }
     if (JUMP_KEYS.has(e.code)) {
       if (!this.enabled) return;
-      if (!this.keyJump) this.jumpPressed = true;
+      if (!this.keyJump && !e.repeat) this.jumpPressed = true;
       this.keyJump = true;
       return;
     }
+    if (e.repeat) return;
     if (e.code === 'Escape') this.unlock();
     if (this.enabled && e.code === 'KeyQ') this.addLook(-60, 0);
     else if (this.enabled && e.code === 'KeyE') this.addLook(60, 0);
@@ -313,8 +324,9 @@ export class Input {
     if (e.pointerType === 'touch' && this.enabled) {
       if (e.clientX < w * JOY_ZONE_X && e.clientY > h * JOY_ZONE_Y && this.joyPointer === null) {
         this.joyPointer = e.pointerId;
-        this.joyOrigin = { x: e.clientX, y: e.clientY };
-        this.joyVec = { x: 0, y: 0 };
+        this.joyOrigin.x = e.clientX;
+        this.joyOrigin.y = e.clientY;
+        this.joyVec.x = this.joyVec.y = 0;
         this.joyBase.classList.remove('is-ghost');
         this.joyBase.style.left = `${e.clientX}px`;
         this.joyBase.style.top = `${e.clientY}px`;
@@ -326,7 +338,8 @@ export class Input {
     }
     if (this.lookPointer === null) {
       this.lookPointer = e.pointerId;
-      this.lastLook = { x: e.clientX, y: e.clientY };
+      this.lastLook.x = e.clientX;
+      this.lastLook.y = e.clientY;
       try {
         this.canvas.setPointerCapture?.(e.pointerId);
       } catch {
@@ -352,7 +365,8 @@ export class Input {
       const n = Math.min(1, len / JOY_RADIUS);
       const mag = smoothstep(JOY_DEAD, 1, n);
       const k = len > 0 ? mag / Math.max(1e-6, n) / JOY_RADIUS : 0;
-      this.joyVec = { x: dx * k, y: -dy * k };
+      this.joyVec.x = dx * k;
+      this.joyVec.y = -dy * k;
       this.joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
       this.lastInputAt = performance.now();
     } else if (e.pointerId === this.lookPointer) {
@@ -363,7 +377,8 @@ export class Input {
         if (Math.hypot(e.clientX - this.tapStart.x, e.clientY - this.tapStart.y) >= TAP_PX) this.tapStart = null;
       }
       if (this.enabled) this.addLook(dx * scale, dy * scale);
-      this.lastLook = { x: e.clientX, y: e.clientY };
+      this.lastLook.x = e.clientX;
+      this.lastLook.y = e.clientY;
       this.lastInputAt = performance.now();
     }
   }
@@ -371,7 +386,7 @@ export class Input {
   private pointerUp(e: PointerEvent, cancelled = false): void {
     if (e.pointerId === this.joyPointer) {
       this.joyPointer = null;
-      this.joyVec = { x: 0, y: 0 };
+      this.joyVec.x = this.joyVec.y = 0;
       this.joyBase.classList.remove('active');
     }
     if (e.pointerId === this.lookPointer) this.lookPointer = null;
