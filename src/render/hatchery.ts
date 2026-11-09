@@ -1,34 +1,102 @@
 // The Hatchery stand on the home island: a wooden incubator table with a straw nest, four big eggs,
 // a heat lamp and a HATCHERY board. The stand goes into the World's decor builder and sign atlas; the
 // eggs are one small toon mesh plus its ink hull (the decor's edge lines would cover their thin layers).
-import { Group, Matrix4, Mesh } from 'three';
-import { BoxBuilder } from './boxes';
+import { BufferGeometry, Color, Float32BufferAttribute, Group, LatheGeometry, Matrix3, Matrix4, Mesh, Quaternion, SphereGeometry, Vector2, Vector3 } from 'three';
 import { inkMaterial, toonVertexMaterial } from './materials';
 import { HOME_TOP } from '../game/config';
 import { EGG_COLORS, HATCHERY } from '../game/hatchery';
+import type { BoxBuilder } from './boxes';
 import type { SignAtlas } from './labels';
 
 const rotY = (x: number, y: number, z: number, ry: number) => new Matrix4().makeRotationY(ry).setPosition(x, y, z);
 
-/** A toon egg from stacked octagonal layers (wider below the middle), with a few spots facing out. */
-function egg(b: BoxBuilder, x: number, y: number, z: number, h: number, shell: string, spot: string, tilt: number): void {
-  const n = 8;
-  const R = h * 0.36;
-  const layer = h / n;
-  for (let i = 0; i < n; i++) {
-    const s = (i + 0.5) / n;
-    const w = Math.max(0.12, 2 * R * Math.sin(Math.PI * Math.pow(s, 0.82)));
-    const cy = y + s * h;
-    const m = rotY(x, cy, z, tilt + (i % 2 ? Math.PI / 4 : 0));
-    b.box(0, 0, 0, w, layer * 1.06, w, shell, { matrix: m, shadeBottom: i === 0 ? 0.25 : 0 });
+/** Egg silhouette radius at height fraction s (0 bottom, 1 top): widest a little below the middle. */
+const eggRadius = (s: number) => Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, s)), 0.82));
+
+/** Unit egg (height 1, max radius .36): a smooth lathe, shaded by the toon ramp like the creatures. */
+function unitEgg(): LatheGeometry {
+  const pts: Vector2[] = [];
+  const rings = 14;
+  for (let i = 0; i <= rings; i++) {
+    const s = i / rings;
+    pts.push(new Vector2(Math.max(i === 0 || i === rings ? 0 : 0.02, 0.36 * eggRadius(s)), s));
   }
-  // Spots: [height fraction, angle around the egg from the front (−z, toward the sea)].
-  const spots: [number, number][] = [[0.3, 0.35], [0.56, -0.55], [0.72, 0.85], [0.4, -1.5], [0.5, 1.7]];
-  for (const [s, a] of spots) {
-    const r = R * Math.sin(Math.PI * Math.pow(s, 0.82)) + 0.03;
-    const px = x + Math.sin(a + tilt) * r;
-    const pz = z - Math.cos(a + tilt) * r;
-    b.box(0, 0, 0, h * 0.15, h * 0.13, h * 0.06, spot, { matrix: rotY(px, y + s * h, pz, -(a + tilt)), noOutline: true });
+  return new LatheGeometry(pts, 16);
+}
+
+/** Collects smooth, vertex-coloured meshes into one geometry (plus an ink hull grown along the normals). */
+class SmoothBuilder {
+  private readonly pos: number[] = [];
+  private readonly nor: number[] = [];
+  private readonly col: number[] = [];
+  private readonly idx: number[] = [];
+  private readonly hullPos: number[] = [];
+  private readonly hullIdx: number[] = [];
+
+  add(g: BufferGeometry, m: Matrix4, color: Color, opts: { hull?: number; shadeBottom?: [number, number] } = {}): void {
+    const p = g.getAttribute('position');
+    const n = g.getAttribute('normal');
+    const nm = new Matrix3().getNormalMatrix(m);
+    const base = this.pos.length / 3;
+    const hullBase = this.hullPos.length / 3;
+    const v = new Vector3();
+    const nv = new Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(m);
+      nv.fromBufferAttribute(n, i).applyMatrix3(nm).normalize();
+      this.pos.push(v.x, v.y, v.z);
+      this.nor.push(nv.x, nv.y, nv.z);
+      let k = 1;
+      if (opts.shadeBottom) k = 0.8 + 0.2 * Math.min(1, Math.max(0, (v.y - opts.shadeBottom[0]) / opts.shadeBottom[1]));
+      this.col.push(color.r * k, color.g * k, color.b * k);
+      if (opts.hull) this.hullPos.push(v.x + nv.x * opts.hull, v.y + nv.y * opts.hull, v.z + nv.z * opts.hull);
+    }
+    const index = g.getIndex();
+    const count = index ? index.count : p.count;
+    for (let i = 0; i < count; i++) {
+      const k = index ? index.getX(i) : i;
+      this.idx.push(base + k);
+      if (opts.hull) this.hullIdx.push(hullBase + k);
+    }
+  }
+
+  build(): { body: BufferGeometry; hull: BufferGeometry } {
+    const body = new BufferGeometry();
+    body.setAttribute('position', new Float32BufferAttribute(this.pos, 3));
+    body.setAttribute('normal', new Float32BufferAttribute(this.nor, 3));
+    body.setAttribute('color', new Float32BufferAttribute(this.col, 3));
+    body.setIndex(this.idx);
+    body.computeBoundingSphere();
+    const hull = new BufferGeometry();
+    hull.setAttribute('position', new Float32BufferAttribute(this.hullPos, 3));
+    hull.setIndex(this.hullIdx);
+    hull.computeBoundingSphere();
+    return { body, hull };
+  }
+}
+
+const UP = new Vector3(0, 1, 0);
+
+/** A smooth toon egg (lathe, slight tilt) with round spots facing out, and its ink hull. */
+function egg(b: SmoothBuilder, shellGeo: BufferGeometry, spotGeo: BufferGeometry, x: number, y: number, z: number, h: number, shell: string, spot: string, tilt: number): void {
+  const m = new Matrix4().compose(new Vector3(x, y, z), new Quaternion(), new Vector3(h, h, h));
+  b.add(shellGeo, m, new Color(shell), { hull: 0.035, shadeBottom: [y, h * 0.45] });
+  // Spots: [height fraction, angle around the egg from the front (−z, toward the sea), size].
+  const spots: [number, number, number][] = [[0.3, 0.35, 0.15], [0.56, -0.55, 0.12], [0.74, 0.8, 0.09], [0.42, -1.5, 0.11], [0.5, 1.7, 0.13], [0.22, -0.9, 0.08]];
+  const c = new Color(spot);
+  const n = new Vector3();
+  const q = new Quaternion();
+  for (const [s, a, size] of spots) {
+    const r = 0.36 * eggRadius(s) * h;
+    n.set(Math.sin(a + tilt), 0, -Math.cos(a + tilt));
+    const at = new Vector3(x + n.x * r, y + s * h, z + n.z * r);
+    // Tilt the outward normal by the shell's slope so the spot lies flat on it.
+    const slope = (eggRadius(s + 0.02) - eggRadius(s - 0.02)) / 0.04 * 0.36;
+    n.y = -slope;
+    n.normalize();
+    q.setFromUnitVectors(UP, n);
+    const sm = new Matrix4().compose(at.addScaledVector(n, -0.004 * h), q, new Vector3(size * h, 0.035 * h, size * h * 0.85));
+    b.add(spotGeo, sm, c);
   }
 }
 
@@ -57,15 +125,20 @@ export function hatcheryStand(decor: BoxBuilder, signs: SignAtlas): Group {
 
   // Four eggs on display: the first four zones' colours, the middle two bigger.
   const eggs: [number, number, number, number][] = [[-1.3, 0.1, 1.0, 0.2], [-0.44, -0.08, 1.34, -0.15], [0.47, 0.1, 1.22, 0.3], [1.32, -0.1, 1.04, -0.25]];
-  const eggB = new BoxBuilder();
+  const eggB = new SmoothBuilder();
+  const shellGeo = unitEgg();
+  const spotGeo = new SphereGeometry(1, 10, 6);
   eggs.forEach(([dx, dz, h, tilt], i) => {
     const [shell, spot] = EGG_COLORS[i];
-    egg(eggB, x + dx, top + 0.1, z + dz, h, shell, spot, tilt);
+    egg(eggB, shellGeo, spotGeo, x + dx, top + 0.1, z + dz, h, shell, spot, tilt);
   });
-  const eggMesh = new Mesh(eggB.build(), toonVertexMaterial);
+  shellGeo.dispose();
+  spotGeo.dispose();
+  const built = eggB.build();
+  const eggMesh = new Mesh(built.body, toonVertexMaterial);
   eggMesh.castShadow = true;
   const eggGroup = new Group();
-  eggGroup.add(eggMesh, new Mesh(eggB.outline(0.035), inkMaterial));
+  eggGroup.add(eggMesh, new Mesh(built.hull, inkMaterial));
 
   // Back frame: two posts, a crossbar, a heat lamp over the eggs and the board.
   const backZ = z + halfD - 0.15;
