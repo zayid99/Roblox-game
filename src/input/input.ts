@@ -350,7 +350,10 @@ export class Input {
 
   private pointerMove(e: PointerEvent): void {
     if (this.locked && e.pointerType === 'mouse') {
-      if (this.enabled) this.addLook(e.movementX * LOCK_SCALE, e.movementY * LOCK_SCALE);
+      // Chrome occasionally reports a huge jump under pointer lock (e.g. right after locking); ignore those.
+      const mx = e.movementX;
+      const my = e.movementY;
+      if (this.enabled && Math.abs(mx) < 300 && Math.abs(my) < 300) this.addLook(mx * LOCK_SCALE, my * LOCK_SCALE);
       this.lastInputAt = performance.now();
       return;
     }
