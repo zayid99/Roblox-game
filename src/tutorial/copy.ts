@@ -5,6 +5,16 @@ export interface Line {
   sub?: string;
 }
 
+/** A Controls card row (ready step). */
+export interface ControlsRow {
+  keys: string[];
+  text: string;
+  /** Row width: full, half, or a quarter when omitted (hotkeys). */
+  size?: 'full' | 'half';
+  /** The panel hotkey it opens: the row only shows while that panel is unlocked. */
+  hotkey?: string;
+}
+
 export const COPY = {
   // Step 1 `grab`
   grabDesktop: { headline: 'RUN + JUMP + HOLD', sub: 'Hold to grab the hook' } as Line,
@@ -57,22 +67,26 @@ export const COPY = {
   skip: 'Skip tutorial ›',
   done: 'GOT IT',
   controlsTitle: 'CONTROLS',
+  // size: 'full' row, 'half' row, or a quarter (hotkeys). hotkey: listed only while it does something.
   controlsDesktop: [
-    { keys: ['W', 'A', 'S', 'D'], text: 'Move' },
-    { keys: ['SPACE'], text: 'Jump, hold to swing' },
-    { keys: ['MOUSE'], text: 'Click, then move to look' },
-    { keys: ['U'], text: 'Shop' },
-    { keys: ['G'], text: 'Free' },
-    { keys: ['I'], text: 'Index' },
-    { keys: ['L'], text: 'Locker' },
+    { keys: ['W', 'A', 'S', 'D'], text: 'Move', size: 'half' },
+    { keys: ['Q', 'E'], text: 'Turn camera', size: 'half' },
+    { keys: ['SPACE'], text: 'Jump, hold to swing', size: 'full' },
+    { keys: ['MOUSE'], text: 'Click, then move to look', size: 'full' },
+    { keys: ['U'], text: 'Shop', hotkey: 'u' },
+    { keys: ['G'], text: 'Free', hotkey: 'g' },
+    { keys: ['I'], text: 'Index', hotkey: 'i' },
+    { keys: ['H'], text: 'Eggs', hotkey: 'h' },
+    { keys: ['L'], text: 'Locker', hotkey: 'l' },
     { keys: ['P'], text: 'Settings' },
     { keys: ['M'], text: 'Mute' },
-  ] as { keys: string[]; text: string }[],
+    { keys: ['ESC'], text: 'Close' },
+  ] as ControlsRow[],
   controlsTouch: [
-    { keys: ['STICK'], text: 'Move' },
-    { keys: ['JUMP'], text: 'Jump, hold to swing' },
-    { keys: ['DRAG'], text: 'Drag the right side to look' },
-  ] as { keys: string[]; text: string }[],
+    { keys: ['STICK'], text: 'Move', size: 'full' },
+    { keys: ['JUMP'], text: 'Jump, hold to swing', size: 'full' },
+    { keys: ['DRAG'], text: 'Drag the right side to look', size: 'full' },
+  ] as ControlsRow[],
 
   // §7.4 hints
   dragToLook: { headline: 'LOOK AROUND' } as Line,
