@@ -88,7 +88,11 @@ export class CarryPart {
       this.last.full = full;
       setText(this.countTxt, full ? 'FULL' : `${count}/${capacity}`);
       this.counter.classList.toggle('full', full);
-      if (becameFull && !reduce) replay(this.el, 'fx-shake');
+      // Shake the children: the bar itself is centred with `translate`, which the shake keyframes animate.
+      if (becameFull && !reduce) {
+        replay(this.counter, 'fx-shake');
+        replay(this.slotsEl, 'fx-shake');
+      }
     }
     if (tripBonusPct !== this.last.bonus) {
       this.last.bonus = tripBonusPct;

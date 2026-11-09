@@ -2,13 +2,15 @@
 
 .hud-root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-hud); }
 .hud-layer { position: absolute; left: 0; top: 0; width: calc(100% / var(--u, 1)); height: calc(100% / var(--u, 1)); pointer-events: none; }
-.hud-ov, .hud-fx { position: absolute; inset: 0; pointer-events: none; }
+.hud-ov, .hud-aim, .hud-fx { position: absolute; inset: 0; pointer-events: none; }
 .hud-ov { z-index: var(--z-hud-top); }
+/* The hook reticle and edge arrow draw over the top HUD (a hook high on screen sits behind the wave meter). */
+.hud-aim { z-index: calc(var(--z-hud-top) + 1); }
 .hud-fx { z-index: var(--z-toast); }
 .hud-layer > * { position: absolute; }
 .part-hidden { opacity: 0 !important; pointer-events: none !important; transition: opacity 200ms; }
 .part-hidden * { pointer-events: none !important; }
-.hud-root.big-reveal .hud-layer > *:not(.tl):not(.reveal-host):not(.banners):not(.reveal-layer), .hud-root.big-reveal .hud-ov { opacity: 0; transition: opacity 150ms; }
+.hud-root.big-reveal .hud-layer > *:not(.tl):not(.reveal-host):not(.banners):not(.reveal-layer), .hud-root.big-reveal .hud-ov, .hud-root.big-reveal .hud-aim { opacity: 0; transition: opacity 150ms; }
 .hud-root.big-reveal .tl { z-index: calc(var(--z-reveal) + 1); }
 .hud-root.big-reveal .banners { z-index: calc(var(--z-reveal) + 2); }
 .reveal-layer { z-index: var(--z-reveal); }
@@ -33,6 +35,9 @@
 
 /* ---------------- Top-centre: wave meter + course bar ---------------- */
 .tc { left: 50%; top: 14px; translate: -50% 0; display: flex; flex-direction: column; align-items: center; z-index: var(--z-hud-top); }
+/* An open panel pauses the wave: hide the meter instead of letting its ends peek out around the ribbon. */
+.tc { transition: opacity 150ms; }
+.panel-open .tc { opacity: 0; }
 .wave-meter {
   position: relative; width: 380px; height: 52px; border-radius: 999px; border: 4px solid var(--ink);
   background: linear-gradient(180deg, var(--hud-dark), var(--hud-dark-lo)); box-shadow: inset 0 3px 0 rgba(255,255,255,.12), 0 4px 0 var(--ink);
@@ -100,7 +105,8 @@
 /* Toasts make room for the tutorial objective pill (§4.1: y 192 while it shows) and for a centre banner. */
 .toasts { transition: top 180ms ease-out; }
 .hud-root.objective-up .toasts { top: 192px; }
-.hud-root.banner-up .toasts { top: calc(22% + 100px); }
+/* Below the banner's sub-line: ribbon 84 + 6 + sub chip ~30, plus ~8 px for the -3deg tilt. */
+.hud-root.banner-up .toasts { top: calc(22% + 132px); }
 
 /* ---------------- Tracker ---------------- */
 .tracker { right: 16px; top: 84px; width: 260px; z-index: var(--z-hud); transition: opacity 250ms, transform 250ms; transform-origin: top right; }
@@ -235,6 +241,7 @@
 [data-layout="landscape"] .tl .pill--pearl { position: fixed; left: auto; right: calc(var(--sr) + 112px); top: calc(var(--st) + 10px); height: 30px; min-width: 92px !important; padding: 0 10px 0 30px; }
 [data-layout="landscape"] .pill--pearl > .ic { width: 34px; height: 34px; left: -8px; top: -5px; }
 [data-layout="landscape"] .pill--pearl .val { font-size: 18px; }
+
 [data-layout="landscape"] .rail { left: var(--sl); top: calc(var(--st) + 60px); flex-direction: row; gap: 8px; }
 [data-layout="landscape"] .tile { width: 52px; height: 52px; border-radius: 14px; }
 [data-layout="landscape"] .tile > .ic { width: 40px; height: 40px; top: -9px; }
@@ -258,9 +265,10 @@
 [data-layout="landscape"] .course .cb-seg b, [data-layout="portrait"] .course .cb-seg b { display: none; }
 [data-layout="landscape"] .course .cb-zone, [data-layout="portrait"] .course .cb-zone { display: none; }
 [data-layout="landscape"] .course .cb-player, [data-layout="portrait"] .course .cb-player { width: 18px; height: 18px; margin-top: -9px; left: -9px; }
-[data-layout="landscape"] .toasts { top: 74px; }
-[data-layout="landscape"].objective-up .toasts { top: 128px; }
-[data-layout="landscape"].banner-up .toasts { top: calc(16% + 76px); }
+/* Landscape: under the horizontal rail row (tiles to st+118) and the objective pill (74..124). */
+[data-layout="landscape"] .toasts { top: calc(var(--st) + 128px); }
+[data-layout="landscape"].objective-up .toasts { top: calc(var(--st) + 128px); }
+[data-layout="landscape"].banner-up .toasts { top: calc(16% + 104px); }
 [data-layout="landscape"] .toast, [data-layout="portrait"] .toast { height: 38px; font-size: 15px; }
 [data-layout="landscape"] .toast .tdisc, [data-layout="portrait"] .toast .tdisc { width: 30px; height: 30px; }
 [data-layout="landscape"] .tracker { right: var(--sr); top: calc(var(--st) + 58px); width: 210px; }
@@ -275,6 +283,12 @@
 [data-layout="landscape"] .slot .sp, [data-layout="portrait"] .slot .sp { width: 46px; height: 46px; top: -8px; }
 [data-layout="landscape"] .carry.many .slot { width: 42px; height: 42px; }
 [data-layout="landscape"] .carry.many .slots { gap: 6px; }
+/* 640-700 px landscape phones: 8 slots would run under the JUMP button. */
+@media (max-width: 700px) {
+  [data-layout="landscape"] .carry.many .slot { width: 36px; height: 36px; }
+  [data-layout="landscape"] .carry.many .slots { gap: 4px; }
+  [data-layout="landscape"] .carry.many .slot .sp { width: 38px; height: 38px; top: -6px; }
+}
 [data-layout="landscape"] .carry-count, [data-layout="portrait"] .carry-count { height: 36px; }
 [data-layout="landscape"] .carry-count .ic, [data-layout="portrait"] .carry-count .ic { width: 30px; height: 30px; }
 [data-layout="landscape"] .act { right: calc(var(--sr) + 16px); bottom: calc(var(--sb) + 16px); }
@@ -284,7 +298,19 @@
 [data-layout="landscape"] .banner .bn-title { font-size: 34px; --sw: 9px; --sd: 4px; }
 [data-layout="landscape"] .banner .bn-sub, [data-layout="portrait"] .banner .bn-sub { font-size: 15px; }
 [data-layout="landscape"] .reveal-host { right: var(--sr); top: 34%; }
-
+/* Most phones in landscape (<= 900 px): the income chip ran under the centred wave meter and the pearl pill
+   under its right end. Drop the income chip (the cash pill still counts up) and tuck the pearls by the buoys. */
+@media (max-width: 900px) {
+  [data-layout="landscape"] .tl .income-chip { display: none; }
+  [data-layout="landscape"] .tl .pill--pearl { right: calc(var(--sr) + 104px); min-width: 84px !important; }
+}
+/* 640 px class: a slightly shorter meter (without the #n chip) so the pearls clear it. */
+@media (max-width: 700px) {
+  [data-layout="landscape"] .wave-meter { width: 250px; }
+  [data-layout="landscape"] .wave-meter .wm-chip { display: none; }
+  [data-layout="landscape"] .wave-meter .wm-text { right: 14px; }
+  [data-layout="landscape"] .course { width: 250px; --cbw: 250px; }
+}
 /* ======================================================================= */
 /* Phone portrait (390×844)                                                */
 /* ======================================================================= */
@@ -310,6 +336,13 @@
 [data-layout="portrait"] .tile .tile-label { height: 19px; font-size: 13px; bottom: -10px; padding: 0 6px; }
 [data-layout="portrait"] .chain { left: 50%; top: 30%; translate: -30% 0; }
 [data-layout="portrait"] .carry { bottom: calc(var(--sb) + 150px); }
+/* 6+ slots: the counter moves above the slots so 8 of them fit a 360 px phone (the toasts sit above at sb+242). */
+[data-layout="portrait"] .carry.many { flex-direction: column; align-items: center; gap: 4px; }
+[data-layout="portrait"] .carry.many .slot { width: 40px; height: 40px; }
+[data-layout="portrait"] .carry.many .slots { gap: 5px; }
+[data-layout="portrait"] .carry.many .slot .sp { width: 40px; height: 40px; top: -6px; }
+[data-layout="portrait"] .carry.many .carry-count { margin-right: 0; }
+[data-layout="portrait"] .carry.many .trip-bonus { top: 5px; left: calc(50% + 50px); translate: 0 0; }
 [data-layout="portrait"] .act { right: 20px; bottom: calc(var(--sb) + 28px); width: 104px; height: 104px; }
 [data-layout="portrait"] .joy.is-ghost { left: 100px; top: calc(100% - var(--sb) - 110px); }
 [data-layout="portrait"] .banners { top: 22%; }
@@ -320,7 +353,7 @@
 
 /* Portrait: the top-left rail block and the tracker chip fill the upper band, so toasts sit in the clear
    strip between the character's feet and the carry hotbar. */
-[data-layout="portrait"].hud-root .toasts { top: auto; bottom: calc(var(--sb) + 214px); }
+[data-layout="portrait"].hud-root .toasts { top: auto; bottom: calc(var(--sb) + 242px); }
 
 /* A panel always keeps toasts at the bottom (after the objective/banner offsets above). */
 .hud-root.panel-open[data-layout] .toasts { top: auto; bottom: 20px; }

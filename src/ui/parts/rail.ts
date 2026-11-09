@@ -25,6 +25,9 @@ const TILES: TileDef[] = [
 const BADGE_ORDER: RailId[] = ['free', 'rebirth', 'index', 'shop', 'hatchery'];
 /** Wiggle priority: FREE claimable > Shop affordable > Index NEW; one at a time. */
 const WIGGLE_ORDER: RailId[] = ['free', 'shop', 'index', 'rebirth', 'hatchery'];
+/** Tiles that unlock together (end of the FTUE) pop one at a time, this far apart, once the banner is gone. */
+const POP_GAP = 0.45;
+const MAX_BANNER_WAIT = 2.5;
 
 interface TileEls {
   root: HTMLButtonElement;
@@ -39,6 +42,10 @@ export class RailPart {
   private readonly tiles = new Map<RailId, TileEls>();
   private tip: HTMLElement;
   private tipTimer = 0;
+  /** Unlocked tiles waiting for their pop (kept hidden until then). */
+  private pending: RailId[] = [];
+  private popWait = 0;
+  private bannerWait = 0;
 
   constructor(ctx: HudCtx) {
     this.el = el('div', 'rail');
@@ -76,7 +83,8 @@ export class RailPart {
     return this.tiles.get(id)?.root ?? null;
   }
 
-  update(rail: Record<RailId, RailTileState>, reduce: boolean): void {
+  /** `hold`: a centre banner is up (a batch of unlocks waits for it, at most 2.5 s). */
+  update(rail: Record<RailId, RailTileState>, reduce: boolean, dt: number, hold: boolean): void {
     let badges = 0;
     const badgeAllowed = new Set<RailId>();
     for (const id of BADGE_ORDER) {
@@ -88,6 +96,7 @@ export class RailPart {
     }
     const wiggler = reduce ? null : (WIGGLE_ORDER.find((id) => rail[id]?.visible && rail[id]?.wiggle) ?? null);
 
+    const unlocked: RailId[] = [];
     for (const t of TILES) {
       const s = rail[t.id];
       const e = this.tiles.get(t.id) as TileEls;
@@ -95,11 +104,11 @@ export class RailPart {
       if (s.visible !== e.last.visible) {
         const first = e.last.visible === null;
         e.last.visible = s.visible;
-        e.root.classList.toggle('hud-hide', !s.visible);
-        e.root.tabIndex = s.visible ? 0 : -1;
-        if (s.visible && !first) {
-          replay(e.root, 'unlock');
-          uiSound('ui.open');
+        if (s.visible && !first) unlocked.push(t.id);
+        else {
+          this.pending = this.pending.filter((id) => id !== t.id);
+          e.root.classList.toggle('hud-hide', !s.visible);
+          e.root.tabIndex = s.visible ? 0 : -1;
         }
       }
       const badge = badgeAllowed.has(t.id) && s.badge !== null ? String(s.badge) : '';
@@ -138,6 +147,43 @@ export class RailPart {
         e.root.classList.toggle('wiggle', wig);
       }
     }
+    this.queueUnlocks(unlocked, dt, hold);
+  }
+
+  /**
+   * A lone unlock (the Shop at the FTUE shop step) pops at once. Several at once (FREE, Index and
+   * Hatchery after the first wave) would land in the same second as the banner, confetti and toasts,
+   * so they wait for the banner and then pop one by one.
+   */
+  private queueUnlocks(unlocked: RailId[], dt: number, hold: boolean): void {
+    this.popWait = Math.max(0, this.popWait - dt);
+    if (unlocked.length === 1 && !this.pending.length && this.popWait <= 0) {
+      this.pop(unlocked[0]);
+      return;
+    }
+    if (unlocked.length) {
+      if (!this.pending.length) this.bannerWait = 0;
+      this.pending.push(...unlocked);
+    }
+    if (!this.pending.length) return;
+    if (hold && this.bannerWait < MAX_BANNER_WAIT) {
+      this.bannerWait += dt;
+      return;
+    }
+    if (this.popWait > 0) return;
+    const id = this.pending.shift() as RailId;
+    this.pop(id);
+  }
+
+  private pop(id: RailId): void {
+    const e = this.tiles.get(id) as TileEls;
+    e.root.classList.remove('hud-hide');
+    e.root.tabIndex = 0;
+    replay(e.root, 'unlock');
+    // The pop's fill-mode would otherwise keep beating the attention wiggle for the whole session.
+    window.setTimeout(() => e.root.classList.remove('unlock'), 340);
+    uiSound('ui.open');
+    this.popWait = POP_GAP;
   }
 
   private showTipSoon(b: HTMLElement, text: string, ms: number): void {

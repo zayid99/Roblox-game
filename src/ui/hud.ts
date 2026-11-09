@@ -56,6 +56,7 @@ export class Hud {
   private readonly root: HTMLElement;
   private readonly layer: HTMLElement;
   private readonly ov: HTMLElement;
+  private readonly aim: HTMLElement;
   private readonly fxLayer: HTMLElement;
   private readonly watcher: LayoutWatcher;
   private readonly ctx: HudCtx;
@@ -106,8 +107,9 @@ export class Hud {
     this.root = el('div', 'sos hud-root');
     this.layer = el('div', 'hud-layer');
     this.ov = el('div', 'hud-ov');
+    this.aim = el('div', 'hud-aim');
     this.fxLayer = el('div', 'hud-fx');
-    this.root.append(this.ov, this.layer, this.fxLayer);
+    this.root.append(this.ov, this.layer, this.aim, this.fxLayer);
     root.appendChild(this.root);
     this.watcher = new LayoutWatcher(this.root, this.layer);
 
@@ -145,10 +147,16 @@ export class Hud {
     this.topCenter.append(this.wave.el, this.course.el);
     this.carry = new CarryPart(deps);
     this.tracker = new TrackerPart();
+    // A quest reward is already in the state when its row turns done: hold it at once (so the pill
+    // doesn't roll up, then down, then up again) and let the burst 300 ms later only release it.
+    this.tracker.onRowHold = (reward) => {
+      if (reward.cash) this.cash.heldCash += reward.cash;
+      if (reward.pearls) this.cash.heldPearls += reward.pearls;
+    };
     this.tracker.onRowDone = (rw, reward) => {
       const from = this.ctx.centerOf(rw);
-      if (reward.cash) void this.coinFly(from, reward.cash, 'cash');
-      if (reward.pearls) void this.coinFly(from, reward.pearls, 'pearl', 5);
+      if (reward.cash) void this.flyCoins(from, reward.cash, 'cash', undefined, false);
+      if (reward.pearls) void this.flyCoins(from, reward.pearls, 'pearl', 5, false);
     };
     this.chain = new ChainPart();
     this.toasts = new ToastsPart(() => this.watcher.mode);
@@ -180,7 +188,8 @@ export class Hud {
     this.vignette = el('div', 'vignette');
     this.reticle = new ReticlePart();
     this.edge = new EdgeArrowPart();
-    this.ov.append(this.vignette, this.reticle.el, this.edge.el);
+    this.ov.append(this.vignette);
+    this.aim.append(this.reticle.el, this.edge.el);
     this.flashEl = el('div', 'flash');
     this.countEl = el('div', 'countdown');
     this.floats = new FloatText(this.fxLayer);
@@ -244,12 +253,13 @@ export class Hud {
     }
     this.banners.setState(surge, v.action);
 
+    // The tracker first: a finished quest holds its reward before the pills read the new totals.
+    this.tracker.update(v.tracker, surge, this.watcher.mode);
     this.cash.update(realDt, v.cash, v.income, v.multiplier, v.rebirths, v.pearls, reduce);
-    this.rail.update(v.rail, reduce);
+    this.rail.update(v.rail, reduce, realDt, this.banners.busy);
     this.wave.update(v.wave, reduce);
     this.course.update(v.course);
     this.carry.update(v.carried, v.capacity, v.tripBonusPct, reduce);
-    this.tracker.update(v.tracker, surge, this.watcher.mode);
     this.chain.update(v.chain, reduce);
     this.reticle.update(v.reticle, reduce);
     this.edge.update(v.edgeArrow, window.innerWidth, window.innerHeight);
@@ -284,7 +294,7 @@ export class Hud {
       mode === 'locked'
         ? `<span class="key">ESC</span><span class="t-stroke">Show cursor</span>`
         : mode === 'free'
-          ? `${icon('hand', 26)}<span class="t-stroke">Click the game to look with your mouse</span>`
+          ? `${icon('hand', 26)}<span class="t-stroke">Click to look around</span>` // short: clears an 8-slot hotbar
           : '';
   }
 
@@ -314,14 +324,31 @@ export class Hud {
   }
 
   coinFly(from: ScreenPt, amount: number, currency: 'cash' | 'pearl', coins?: number): Promise<void> {
+    return this.flyCoins(from, amount, currency, coins, true);
+  }
+
+  /** `hold` false: the amount was already held (quest rewards); the coins only release it. */
+  private flyCoins(from: ScreenPt, amount: number, currency: 'cash' | 'pearl', coins: number | undefined, hold: boolean): Promise<void> {
     const income = this.lastView?.income ?? 1;
-    const n = Math.max(1, Math.min(12, coins ?? CoinFly.coinsFor(amount, income)));
+    let n = Math.max(1, Math.min(12, coins ?? CoinFly.coinsFor(amount, income)));
+    // CoinFly sends at most 4 coins with reduced motion: split the amount over what really flies.
+    if (isReducedMotion()) n = Math.min(n, 4);
     const per = amount / n;
-    if (currency === 'cash') this.cash.heldCash += amount;
-    else this.cash.heldPearls += amount;
+    if (hold) {
+      if (currency === 'cash') this.cash.heldCash += amount;
+      else this.cash.heldPearls += amount;
+    }
     const target = currency === 'cash' ? this.cash.cashIcon : this.cash.pearlIcon;
     const to = () => this.ctx.centerOf(target);
-    return this.coins.fly(from, to, currency, n, () => this.cash.release(currency, per));
+    let released = 0;
+    const release = (a: number) => {
+      const r = Math.min(a, amount - released);
+      if (r <= 0) return;
+      released += r;
+      this.cash.release(currency, r);
+    };
+    // The last coin releases whatever is left, so nothing stays held if fewer coins flew.
+    return this.coins.fly(from, to, currency, n, () => release(per)).then(() => release(amount - released));
   }
 
   creatureToSlot(from: ScreenPt, c: CreatureRef, slot: number): void {
@@ -435,8 +462,21 @@ export class Hud {
     this.content?.setFocus?.(f);
   }
 
+  /** Whether a panel hotkey does something yet (u, g, i, h follow their rail tile; l needs the Locker). */
+  hotkeyOn(key: string): boolean {
+    const rail = this.lastView?.rail;
+    switch (key.toLowerCase()) {
+      case 'u': return rail?.shop.visible ?? true;
+      case 'g': return rail?.free.visible ?? true;
+      case 'i': return rail?.index.visible ?? true;
+      case 'h': return rail?.hatchery.visible ?? true;
+      case 'l': return (rail?.shop.visible ?? true) && this.deps.data.shop().lockerUnlocked;
+      default: return true;
+    }
+  }
+
   showControlsCard(ms: number): void {
-    const card = el('div', 'controls-card card', `<div class="cc-h t-d">CONTROLS</div>${controlsCardHtml(this.ctx.touch())}`);
+    const card = el('div', 'controls-card card', `<div class="cc-h t-d">CONTROLS</div>${controlsCardHtml(this.ctx.touch(), (k) => this.hotkeyOn(k))}`);
     const scrim = el('div', 'cc-wrap');
     scrim.appendChild(card);
     const close = () => {
