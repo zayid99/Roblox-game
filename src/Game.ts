@@ -763,9 +763,11 @@ export class Game {
       // Walking up to the Hatchery stand opens it once per visit. Only leaving the zone re-arms it,
       // so a hop inside the zone does not count as a new visit.
       const p = sim.player.pos;
+      // Walk-ups only open panels at calm moments: not while carrying creatures home or with a wave coming.
+      const calmWalkUp = state.carried.length === 0 && sim.wave.phase === 'calm';
       const inZone = state.ftue.done && !this.tutorial.active && inHatcheryZone(p.x, p.z) && p.y >= HOME_TOP - 0.5;
       if (!inZone) this.atHatchery = false;
-      else if (!this.atHatchery && sim.isOnHome()) {
+      else if (!this.atHatchery && sim.isOnHome() && calmWalkUp) {
         this.atHatchery = true;
         this.openPanel('hatchery', 'eggs');
       }
@@ -773,7 +775,8 @@ export class Game {
       // only at its "open the Shop" step.
       if (this.shopWalkUp) {
         this.shopWalkUp = false;
-        const shopOk = this.progression.railState(state.cash, true).shop.visible && (!this.tutorial.active || tf.step === 'shop');
+        const shopOk =
+          this.progression.railState(state.cash, true).shop.visible && (this.tutorial.active ? tf.step === 'shop' : calmWalkUp);
         if (shopOk && !this.paused && this.hud.openPanelKind === null) this.openPanel('shop', 'upgrades');
       }
     } else {
