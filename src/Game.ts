@@ -165,6 +165,7 @@ export class Game {
       bannerUp: () => !!this.uiRoot.querySelector('.hud-root.banner-up'),
       reduceMotion: reduce,
       device,
+      hotkeyOn: (k) => this.hud.hotkeyOn(k),
     });
     this.hints = new Hints({
       toast: (t) => this.hud.toast(t),

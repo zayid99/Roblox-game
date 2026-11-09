@@ -35,8 +35,8 @@ export function maybeCoach(deps: HudDeps, host: HTMLElement, id: string): void {
   host.append(scrim, card);
 }
 
-/** Controls card content: keycaps on desktop, pictograms on touch. */
-export function controlsCardHtml(touch: boolean): string {
+/** Controls card content: keycaps on desktop, pictograms on touch. `on(key)`: list a panel hotkey only once it works. */
+export function controlsCardHtml(touch: boolean, on: (key: string) => boolean = () => true): string {
   if (touch) {
     return (
       `<div class="ctl-grid touch">` +
@@ -47,18 +47,21 @@ export function controlsCardHtml(touch: boolean): string {
     );
   }
   const k = (s: string, cls = '') => `<span class="key ${cls}">${s}</span>`;
+  const hot = (key: string, label: string) => (on(key.toLowerCase()) ? `<div class="ctl small"><span class="keys">${k(key)}</span><span>${label}</span></div>` : '');
   return (
     `<div class="ctl-grid">` +
-    `<div class="ctl"><span class="keys wasd">${k('W')}<br>${k('A')}${k('S')}${k('D')}</span><span>Move</span></div>` +
-    `<div class="ctl"><span class="keys">${k('SPACE', 'key--space')}</span><span>Jump, hold to swing</span></div>` +
-    `<div class="ctl"><span class="keys">${icon('hand', 30)}</span><span>Click, then move the mouse to look</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('U')}</span><span>Shop</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('G')}</span><span>Free</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('I')}</span><span>Index</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('L')}</span><span>Locker</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('P')}</span><span>Settings</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('M')}</span><span>Mute</span></div>` +
-    `<div class="ctl small"><span class="keys">${k('Esc')}</span><span>Close</span></div>` +
+    `<div class="ctl big"><span class="keys wasd">${k('W')}<br>${k('A')}${k('S')}${k('D')}</span><span>Move</span></div>` +
+    `<div class="ctl big"><span class="keys">${k('Q')}${k('E')}</span><span>Turn camera</span></div>` +
+    `<div class="ctl big"><span class="keys">${k('SPACE', 'key--space')}</span><span>Jump, hold to swing</span></div>` +
+    `<div class="ctl big"><span class="keys">${icon('hand', 30)}</span><span>Click, then move to look</span></div>` +
+    hot('U', 'Shop') +
+    hot('G', 'Free') +
+    hot('I', 'Index') +
+    hot('H', 'Eggs') +
+    hot('L', 'Locker') +
+    hot('P', 'Settings') +
+    hot('M', 'Mute') +
+    hot('Esc', 'Close') +
     `</div>`
   );
 }

@@ -24,6 +24,8 @@ export interface TutorialOverlayDeps {
   bannerUp?: () => boolean;
   reduceMotion?: () => boolean;
   device?: () => Device;
+  /** Whether a panel hotkey (u, g, i, h, l) does anything yet; the Controls card lists only those. */
+  hotkeyOn?: (key: string) => boolean;
 }
 
 const CHECK_MS = 360; // check stamp 200 ms + exit 160 ms
@@ -353,14 +355,16 @@ export class TutorialOverlay {
     this.controlsShown = f.controlsCard;
     if (f.controlsCard) {
       const touch = this.device(f) === 'touch';
-      const rows = touch ? COPY.controlsTouch : COPY.controlsDesktop;
+      // The Locker (L) opens only after the First Voyage: without the hook, leave it out.
+      const on = (k: string) => this.deps.hotkeyOn?.(k) ?? k !== 'l';
+      const rows = (touch ? COPY.controlsTouch : COPY.controlsDesktop).filter((r) => !r.hotkey || on(r.hotkey));
       const c = this.controls;
       c.innerHTML = '';
       const title = div('tut-controls-title tut-t', c);
       setText(title, COPY.controlsTitle);
       const grid = div('tut-controls-grid', c);
       for (const r of rows) {
-        const row = div('tut-controls-row', grid);
+        const row = div(`tut-controls-row${r.size ? ` is-${r.size}` : ''}`, grid);
         const keys = div('tut-controls-keys', row);
         for (const k of r.keys) {
           const cap = document.createElement('span');
@@ -371,6 +375,13 @@ export class TutorialOverlay {
         const t = div('tut-controls-text', row);
         t.textContent = r.text;
       }
+      // A clear way out (a tap anywhere on the card also closes it).
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn--grass btn--s tut-controls-ok';
+      ok.innerHTML = '<span class="label"></span>';
+      setText(ok.firstElementChild as HTMLElement, COPY.done);
+      c.appendChild(ok);
       restart(c, 'is-on');
     } else {
       this.controls.classList.remove('is-on');

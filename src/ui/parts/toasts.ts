@@ -5,6 +5,8 @@ import { icon } from '../icons';
 
 const DEFAULT_ICON: Record<ToastSpec['kind'], IconId> = { info: 'sparkle', good: 'check', warn: 'warning', bad: 'wave' };
 const WAVE_ICONS = new Set<IconId>(['wave', 'warning', 'lighthouse', 'home']);
+/** A queued warning ("Hands full. Head home.") describes a moment; it is dropped if it can't show soon. */
+const WARN_MAX_WAIT = 4;
 
 interface Live {
   spec: ToastSpec;
@@ -14,9 +16,17 @@ interface Live {
   shownAt: number;
 }
 
+interface Queued {
+  spec: ToastSpec;
+  /** Seconds spent in the queue. */
+  age: number;
+  /** Queued while the surge held non-wave toasts back. */
+  inSurge: boolean;
+}
+
 export class ToastsPart {
   readonly el: HTMLElement;
-  private readonly queue: ToastSpec[] = [];
+  private queue: Queued[] = [];
   private live: Live[] = [];
   private surge = false;
 
@@ -25,6 +35,10 @@ export class ToastsPart {
   }
 
   setSurge(on: boolean): void {
+    if (this.surge && !on) {
+      // Warnings held back by the surge are stale once it is over (the wave may have taken what they talk about).
+      this.queue = this.queue.filter((q) => !(q.inSurge && q.spec.kind === 'warn' && !this.isWave(q.spec)));
+    }
     this.surge = on;
   }
 
@@ -44,7 +58,8 @@ export class ToastsPart {
       replay(same.node, 'repop');
       return;
     }
-    this.queue.push(t);
+    if (this.queue.some((q) => q.spec.text === t.text)) return;
+    this.queue.push({ spec: t, age: 0, inSurge: this.surge });
     this.pump();
   }
 
@@ -59,10 +74,10 @@ export class ToastsPart {
 
   private pump(): void {
     while (this.live.length < this.max()) {
-      const i = this.queue.findIndex((t) => !this.surge || this.isWave(t));
+      const i = this.queue.findIndex((q) => !this.surge || this.isWave(q.spec));
       if (i < 0) return;
-      const t = this.queue.splice(i, 1)[0];
-      this.show(t);
+      const q = this.queue.splice(i, 1)[0];
+      this.show(q.spec);
     }
   }
 
@@ -71,17 +86,21 @@ export class ToastsPart {
     node.innerHTML = `<span class="tdisc">${icon(t.icon ?? DEFAULT_ICON[t.kind], 26)}</span><span class="tx">${escapeHtml(t.text)}</span><span class="x2"></span>`;
     if (t.action) {
       const b = el('button', 'btn btn--sky btn--s', `${icon(t.action.icon, 22)}<span class="label">${escapeHtml(t.action.label)}</span>`);
+      // Dismiss first: the node stays hit-testable during its 160 ms exit, and a second tap must not
+      // run the action again (two rewarded-ad requests).
       pressable(b, () => {
-        t.action?.onTap();
+        if (!this.live.includes(live)) return;
         this.dismiss(live);
+        t.action?.onTap();
       });
       node.appendChild(b);
     }
     if (t.onTap) {
       node.classList.add('tappable');
       pressable(node, () => {
-        t.onTap?.();
+        if (!this.live.includes(live)) return;
         this.dismiss(live);
+        t.onTap?.();
       }, { sound: 'ui.click' });
     }
     const live: Live = { spec: t, node, left: this.hold(t), count: 1, shownAt: performance.now() };
@@ -104,6 +123,10 @@ export class ToastsPart {
   }
 
   update(dt: number): void {
+    if (this.queue.length) {
+      for (const q of this.queue) q.age += dt;
+      this.queue = this.queue.filter((q) => !(q.spec.kind === 'warn' && !q.spec.action && q.age > WARN_MAX_WAIT));
+    }
     for (const l of [...this.live]) {
       l.left -= dt;
       if (l.left <= 0) this.dismiss(l);

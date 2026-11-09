@@ -34,6 +34,7 @@ export class PanelShell {
   private readonly title: HTMLElement;
   private hue: Hue;
   private closing = false;
+  private swapTimer = 0;
 
   constructor(host: HTMLElement, private readonly opts: ShellOpts) {
     this.hue = opts.hue;
@@ -89,13 +90,16 @@ export class PanelShell {
 
   /** Swap content with the tab-switch motion (old fades 80 ms, new cards stagger). */
   swapBody(fill: (body: HTMLElement) => void, animate = true): void {
+    window.clearTimeout(this.swapTimer);
+    this.swapTimer = 0;
     if (!animate) {
       this.body.innerHTML = '';
       fill(this.body);
       return;
     }
     this.body.classList.add('fading');
-    window.setTimeout(() => {
+    this.swapTimer = window.setTimeout(() => {
+      this.swapTimer = 0;
       this.body.classList.remove('fading');
       this.body.innerHTML = '';
       fill(this.body);
@@ -105,6 +109,7 @@ export class PanelShell {
   close(): Promise<void> {
     if (this.closing) return Promise.resolve();
     this.closing = true;
+    window.clearTimeout(this.swapTimer);
     uiSound('ui.close');
     this.el.classList.add('out');
     this.backdrop.classList.add('out');
@@ -119,6 +124,7 @@ export class PanelShell {
 
   /** Remove immediately (switching panels). */
   destroy(): void {
+    window.clearTimeout(this.swapTimer);
     this.layer.remove();
     this.backdrop.remove();
   }

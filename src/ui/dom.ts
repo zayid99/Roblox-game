@@ -95,6 +95,12 @@ export function pressable(e: HTMLElement, onActivate: () => boolean | void, opts
     }
     if (opts.repeat) {
       const tick = () => {
+        // The button left the DOM (panel closed mid-hold): its pointerup will never come.
+        if (!e.isConnected) {
+          down = false;
+          e.classList.remove('is-down');
+          return stopRepeat();
+        }
         repeated = true;
         if (onActivate() === false) return stopRepeat();
         repeatTimer = window.setTimeout(tick, 120);
@@ -114,6 +120,8 @@ export function pressable(e: HTMLElement, onActivate: () => boolean | void, opts
   };
   e.addEventListener('pointerup', (ev) => end(ev, false));
   e.addEventListener('pointercancel', (ev) => end(ev, true));
+  // Fires after a normal pointerup too (end() is a no-op then); otherwise it means the press was lost.
+  e.addEventListener('lostpointercapture', (ev) => end(ev, true));
   e.addEventListener('pointerenter', (ev) => {
     if (ev.pointerType !== 'mouse') return;
     const now = performance.now();
@@ -127,6 +135,11 @@ export function pressable(e: HTMLElement, onActivate: () => boolean | void, opts
 /** Denied feedback: shake ±6px 3x over 240 ms and the denied sound. */
 export function deny(e: HTMLElement): void {
   uiSound('ui.denied');
+  shake(e);
+}
+
+/** The denied shake without the sound (when the game action already played 'ui.denied'). */
+export function shake(e: HTMLElement): void {
   if (!reduceMotion) replay(e, 'fx-shake');
 }
 

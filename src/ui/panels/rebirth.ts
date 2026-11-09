@@ -42,6 +42,7 @@ export class RebirthTab {
     this.ring = this.root.querySelector('.rb-prog') as SVGRectElement;
     this.btn.dataset.anchor = 'shop:rebirth';
     this.btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
       e.stopPropagation();
       this.btn.setPointerCapture?.(e.pointerId);
       if (!this.env.deps.data.shop().rebirth.can) {
@@ -59,12 +60,27 @@ export class RebirthTab {
     };
     this.btn.addEventListener('pointerup', up);
     this.btn.addEventListener('pointercancel', up);
+    // Capture is lost when the button leaves the DOM (panel closed, tab switched) or a context menu opens.
+    this.btn.addEventListener('lostpointercapture', up);
+    this.btn.addEventListener('contextmenu', up);
+  }
+
+  /** Stops a hold in progress: closing the panel or switching tabs must never complete a rebirth. */
+  destroy(): void {
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.holding = false;
+    this.holdT = 0;
   }
 
   private loop(): void {
     if (this.raf) return;
     this.lastTs = performance.now();
     const step = (now: number) => {
+      if (!this.btn.isConnected) {
+        this.destroy();
+        return;
+      }
       const dt = now - this.lastTs;
       this.lastTs = now;
       if (this.holding) this.holdT += dt / HOLD_MS;

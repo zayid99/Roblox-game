@@ -18,7 +18,8 @@ export class ReticlePart {
   private readonly ring: HTMLElement;
   private readonly chip: HTMLElement;
   private readonly key: HTMLElement;
-  private last = { key: '', x: -999, y: -999, reach: '', hint: false };
+  // hint starts unknown so the first keyHint:false hides the SPACE keycap (touch, returning players).
+  private last = { key: '', x: -999, y: -999, reach: '', hint: null as boolean | null };
 
   constructor() {
     this.el = el('div', 'reticle hud-hide');

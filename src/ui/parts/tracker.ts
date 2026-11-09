@@ -26,6 +26,9 @@ export class TrackerPart {
   private lastProgress = new Map<string, number>();
   private doneSeen = new Set<string>();
   private last = { visible: null as boolean | null, surge: false, layout: '' as LayoutMode | '' };
+  /** The row turned done (the reward is already in the state): called in the same frame. */
+  onRowHold: ((reward: Reward) => void) | null = null;
+  /** The coin burst 300 ms later, from the reward chip (or the header chip while collapsed). */
   onRowDone: ((rowEl: HTMLElement, reward: Reward) => void) | null = null;
 
   constructor() {
@@ -96,8 +99,11 @@ export class TrackerPart {
         this.doneSeen.add(r.text);
         const stamp = el('span', 'tr-stamp', icon('check', 40));
         row.appendChild(stamp);
+        this.onRowHold?.(r.reward);
         window.setTimeout(() => {
-          this.onRowDone?.(row.querySelector('.tr-rw') as HTMLElement, r.reward);
+          // A collapsed tracker hides the row (its rect is 0,0): burst from the header chip instead.
+          const rw = row.querySelector('.tr-rw') as HTMLElement;
+          this.onRowDone?.(this.collapsed || !rw.getClientRects().length ? this.head : rw, r.reward);
           (row.querySelector('.tr-rw') as HTMLElement).style.opacity = '0';
         }, 300);
         window.setTimeout(() => replay(row, 'slide-out'), 700);

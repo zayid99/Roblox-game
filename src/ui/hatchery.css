@@ -12,11 +12,12 @@
 .hx-mut .mgem .ic { width: 20px; height: 20px; }
 
 /* Egg grid: card (C7) + buy button under it, like the Locker cells. */
-.hx-grid { display: grid; grid-template-columns: repeat(4, 148px); gap: 30px 14px; padding: 18px 4px 8px; justify-content: center; }
+.hx-grid { display: grid; grid-template-columns: repeat(4, 148px); gap: 30px 14px; padding: 18px 4px 8px; justify-content: center; justify-content: safe center; }
 .hx-cell { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .hx-card, [data-layout] .card-item.hx-card { width: 148px; height: 214px; padding: 0 6px 10px; cursor: default; }
 .hx-card > * { flex: none; }
-[data-layout] .card-item .hx-sp .porthole { --ph: 34px !important; margin-top: 0; }
+/* Five 28 px portholes overlapping a little fit the card (five 34 px ones ran into the next egg). */
+[data-layout] .card-item .hx-sp .porthole { --ph: 28px !important; margin-top: 0; }
 [data-layout] .hx-card .ci-name { font-size: 17px; }
 .hx-card .ci-name { margin-top: 0; font-size: 17px; }
 .hx-art { position: relative; margin-top: -16px; height: 96px; display: flex; align-items: flex-end; justify-content: center; }
@@ -31,7 +32,8 @@
 .hx-o b { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 5px; background: var(--rc); color: var(--ink); font-weight: 400; text-shadow: none; }
 .hx-o i { font-style: normal; margin-left: auto; color: var(--income); }
 .hx-odds .hx-o { width: 100%; }
-.hx-sps { display: flex; gap: 2px; margin-top: 6px; }
+.hx-sps { display: flex; gap: 0; margin-top: 6px; }
+.hx-sp + .hx-sp { margin-left: -5px; }
 .hx-sp .porthole { margin-top: 0; }
 .hx-sp .porthole .ph-in img { inset: 2%; width: 96%; height: 96%; }
 .hx-sp.unknown .porthole img { filter: brightness(0) opacity(.85); }
@@ -93,7 +95,7 @@
 .hx-pct { font-size: 46px; --sw: 10px; --sd: 5px; }
 .hx-cur-sub { font: 600 14px var(--body); color: var(--text-muted); }
 .hx-un { position: absolute; right: 12px; top: -18px; height: 34px; font-size: 15px; padding: 0 12px; }
-.hx-bgrid { display: grid; grid-template-columns: repeat(5, 120px); gap: 26px 12px; padding: 16px 4px 8px; justify-content: center; }
+.hx-bgrid { display: grid; grid-template-columns: repeat(5, 120px); gap: 26px 12px; padding: 16px 4px 8px; justify-content: center; justify-content: safe center; }
 .hx-bcard { width: 120px; height: 150px; }
 .hx-bcard.sel { outline: 4px solid #fff; outline-offset: 3px; }
 .hx-bon { color: #fff; background: var(--coral); border: 3px solid var(--ink); height: 26px; }

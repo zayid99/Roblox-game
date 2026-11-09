@@ -43,6 +43,8 @@ export class WaveMeterPart {
       this.last.phase = phase;
       this.el.dataset.phase = phase;
       this.el.classList.toggle('golden', w.golden);
+      // Back to paused (Replay tutorial): the chains must show again, not stay at the dropped end frame.
+      if (phase === 'paused') this.chains.classList.remove('drop');
       if (prev === 'paused' && !reduce) {
         // Unlock: the chain drops away.
         replay(this.chains, 'drop');

@@ -174,6 +174,8 @@
 .panel-layer { position: absolute; inset: 0; z-index: var(--z-panel); display: flex; align-items: center; justify-content: center; pointer-events: none; padding: 44px 16px 18px; }
 .backdrop { position: absolute; inset: 0; background: var(--backdrop); z-index: var(--z-backdrop); pointer-events: auto; animation: fadeIn 180ms linear both; }
 .backdrop.out { animation: fadeOut 140ms var(--ease-in) both; }
+/* A closing panel takes no more taps (a double-tap on x2 or CLAIM would run twice). */
+.backdrop.out, .panel.out, .panel.out * { pointer-events: none !important; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
 .panel {
@@ -350,8 +352,9 @@
 @keyframes twinkle { 0%, 100% { scale: 0; } 50% { scale: 1; } }
 
 /* ---------- C8 Toast ---------- */
+/* Only toasts that do something take taps; the rest let taps through to the rail, joystick and panels. */
 .toast {
-  --tc: var(--sky); pointer-events: auto;
+  --tc: var(--sky); pointer-events: none;
   display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px 0 4px; border-radius: 999px; background: var(--card); border: 4px solid var(--ink);
   box-shadow: 0 4px 0 var(--ink); color: var(--text-ink); font: 600 17px/1 var(--body); white-space: nowrap; max-width: 92vw;
   animation: toastIn 240ms var(--ease-back) both;
@@ -362,14 +365,18 @@
 .toast .x2 { font: 400 16px var(--display); color: var(--coral-lo); }
 .toast .btn { height: 34px; font-size: 16px; padding: 0 10px; margin-right: -12px; border-width: 3px; }
 .toast--good { --tc: var(--grass); } .toast--warn { --tc: var(--sun); } .toast--bad { --tc: var(--coral); }
+.toast.tappable, .toast .btn { pointer-events: auto; }
 .toast.out { animation: toastOut 160ms var(--ease-in) both; }
+.toast.out, .toast.out .btn { pointer-events: none; }
 .toast.repop { animation: toastRepop 200ms var(--ease-back); }
 @keyframes toastIn { from { transform: translateY(-16px) scale(.8); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes toastOut { to { transform: translateY(-8px); opacity: 0; } }
 @keyframes toastRepop { 0% { scale: 1.1; } 100% { scale: 1; } }
 
 /* ---------- C9 Banner ---------- */
-.banner { --rb-hi: var(--coral-hi); --rb: var(--coral); --rb-lo: var(--coral-lo); --rb-lip: var(--coral-lip);
+/* Default ribbon colour at zero specificity, so the .hue-* class on the banner wins. */
+:where(.banner) { --rb-hi: var(--coral-hi); --rb: var(--coral); --rb-lo: var(--coral-lo); --rb-lip: var(--coral-lip); }
+.banner {
   position: absolute; left: 50%; display: flex; flex-direction: column; align-items: center; translate: -50% 0; pointer-events: none; }
 .banner .bn-body { position: relative; width: min(640px, 90vw); height: 84px; display: flex; align-items: center; justify-content: center; padding: 0 72px 12px; rotate: -3deg; }
 .banner .ribbon-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }

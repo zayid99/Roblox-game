@@ -6,7 +6,9 @@ export class ResumePart {
   readonly el: HTMLElement;
   private onResume: (() => void) | null = null;
   private readonly onKey = (e: KeyboardEvent) => {
+    // The key that resumes must not also reach the game (Space would jump, M mute, P/U open a panel).
     e.preventDefault();
+    e.stopPropagation();
     this.dismiss();
   };
 

@@ -3,12 +3,13 @@ import { formatCash } from '../../game/economy';
 import { el, gradText, pressable, setText } from '../dom';
 import { icon } from '../icons';
 import type { PanelEnv } from './env';
-import { rewardArt } from './free';
+import { revealReward, rewardArt } from './free';
 import type { PanelContent, PanelShell } from './panel';
 
 export class WelcomePanel implements PanelContent {
   readonly tab = null;
   private raf = 0;
+  private collected = false;
 
   constructor(private readonly shell: PanelShell, private readonly env: PanelEnv) {
     this.refresh();
@@ -65,12 +66,19 @@ export class WelcomePanel implements PanelContent {
   }
 
   private collect(double: boolean, btn: HTMLElement): void {
+    if (this.collected) return; // a double-tap during the close animation must not ask for a second ad
+    this.collected = true;
     const v = this.env.deps.data.welcome();
     const from = this.env.centerOf(btn);
     this.env.deps.actions.collectWelcome(double);
     if (!double && v.offline >= 1) void this.env.coinFly(from, v.offline, 'cash', 10);
     this.env.confetti(from, 40, '#3FCB4B');
     this.env.closePanel();
+    // Mystery Creatures (Day 5, gifts) get their reveal. With x2 the claim waits for the ad, so not here.
+    if (!double) {
+      if (v.daily) revealReward(this.env, v.daily.reward, `Day ${v.daily.day} reward`);
+      for (const r of v.pendingGifts) revealReward(this.env, r, 'Gift reward');
+    }
   }
 
   destroy(): void {

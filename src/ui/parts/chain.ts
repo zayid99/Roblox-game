@@ -9,6 +9,7 @@ export class ChainPart {
   readonly el: HTMLElement;
   private readonly num: HTMLElement;
   private readonly ring: SVGCircleElement;
+  private readonly txt: HTMLElement;
   private last = { count: -1, frac: -1, show: null as boolean | null, tier: -1 };
 
   constructor() {
@@ -19,6 +20,7 @@ export class ChainPart {
       `<div class="ch-txt"><span class="t-stroke ch-lbl">CHAIN</span><span class="ch-num t-grad" data-text="×2"><span>×2</span></span></div>`;
     this.num = this.el.querySelector('.ch-num') as HTMLElement;
     this.ring = this.el.querySelector('.ch-arc') as SVGCircleElement;
+    this.txt = this.el.querySelector('.ch-txt') as HTMLElement;
   }
 
   update(c: HudView['chain'], reduce: boolean): void {
@@ -40,7 +42,8 @@ export class ChainPart {
       }
       if (!reduce) {
         replay(this.num, 'ch-pop');
-        if (up) replay(this.el, 'fx-shake');
+        // The text block shakes, not the root: portrait centres the root with `translate`.
+        if (up) replay(this.txt, 'fx-shake');
       }
     }
     const f = Math.round(Math.max(0, Math.min(1, c.timerFrac)) * 200) / 200;

@@ -37,7 +37,7 @@
 .lk-ph .ph-in { background: #0B2740; }
 .lk-ph canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .lk-name { font-size: 22px; text-align: center; }
-.lk-grid { display: grid; grid-template-columns: repeat(3, 132px); gap: 26px 12px; padding: 16px 4px 8px; justify-content: center; }
+.lk-grid { display: grid; grid-template-columns: repeat(3, 132px); gap: 26px 12px; padding: 16px 4px 8px; justify-content: center; justify-content: safe center; }
 .lk-cell { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .lk-card { height: 150px; }
 .lk-card.sel { outline: 4px solid #fff; outline-offset: 3px; }
@@ -60,6 +60,10 @@
 .ix-rh .rpill { height: 26px; font-size: 15px; }
 .ix-rh .t-stroke { font-size: 18px; }
 .ix-cards { display: flex; gap: 14px; padding: 0 4px 16px; flex-wrap: wrap; }
+/* Desktop: all five species of a rarity on one row (it was four plus a lone fifth card). */
+[data-layout="desktop"] .panel--index { width: min(800px, 94vw); }
+[data-layout="desktop"] .ix-cards { gap: 10px; }
+[data-layout="desktop"] .ix-cards .card-item { width: 128px; }
 .rock { animation: rock 600ms var(--ease-io); }
 @keyframes rock { 0%, 100% { rotate: 0deg; } 25% { rotate: -8deg; } 75% { rotate: 8deg; } }
 
@@ -73,7 +77,7 @@
 .dt-row::-webkit-scrollbar { display: none; }
 .dt-cell { display: flex; flex-direction: column; align-items: center; gap: 10px; flex: none; }
 .dt { position: relative; width: 84px; height: 124px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 8px 4px 10px; }
-.dt.d7 { width: 150px; background: linear-gradient(180deg, #FFF6C2, #FFE680); border-color: var(--ink); box-shadow: inset 0 -5px 0 #F2C24A, 0 4px 0 var(--ink), 0 0 0 3px #FFC92E; }
+.dt.d7 { width: 124px; background: linear-gradient(180deg, #FFF6C2, #FFE680); border-color: var(--ink); box-shadow: inset 0 -5px 0 #F2C24A, 0 4px 0 var(--ink), 0 0 0 3px #FFC92E; }
 .dt-day { font-size: 17px; color: var(--text-ink); }
 .dt-art { display: flex; align-items: center; justify-content: center; min-height: 54px; }
 .dt-amt { font-size: 14px; color: var(--text-ink); text-align: center; line-height: 1; min-height: 14px; }
@@ -90,7 +94,7 @@
 .myst b { position: absolute; font-size: 26px; --sw: 7px; }
 .gold-ph { --rh: #FFE680; --rc: #FFB52E; }
 .fr-foot { padding-top: 10px; }
-.gf-strip { display: grid; grid-template-columns: repeat(8, 78px); gap: 12px 8px; padding: 22px 4px 6px; justify-content: center; }
+.gf-strip { display: grid; grid-template-columns: repeat(8, 78px); gap: 12px 8px; padding: 22px 4px 6px; justify-content: center; justify-content: safe center; }
 .gf-cell { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .gf { position: relative; width: 78px; height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 4px; }
 .gf .gf-box { margin-top: -18px; }
@@ -126,7 +130,9 @@
 .st-controls { background: var(--frame); border-radius: 14px; border: 3px solid var(--ink); padding: 10px; }
 .st-foot { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 4px; }
 .st-ver { font: 600 13px var(--body); color: #9FC3E0; }
-.ctl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 12px; }
+/* Four hotkeys per row; the four main controls take two columns each so their labels stay on one line. */
+.ctl-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; }
+.ctl-grid .ctl.big { grid-column: span 2; }
 .ctl-grid .ctl { display: flex; align-items: center; gap: 8px; font: 600 15px/1.15 var(--body); color: #fff; text-shadow: 0 2px 0 var(--ink); }
 .ctl-grid .ctl.small { font-size: 15px; }
 .ctl-grid .keys { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px; flex: none; }
@@ -201,7 +207,7 @@
 [data-layout="portrait"] .ci-name, [data-layout="landscape"] .ci-name { font-size: 14px; }
 [data-layout="portrait"] .card-item .ci-inc, [data-layout="landscape"] .card-item .ci-inc { font-size: 13px; }
 [data-layout="portrait"] .lk-card, [data-layout="landscape"] .lk-card { height: 128px; }
-[data-layout="portrait"] .ix-cards { gap: 8px; justify-content: center; flex-wrap: nowrap; }
+[data-layout="portrait"] .ix-cards { gap: 8px; justify-content: center; justify-content: safe center; flex-wrap: nowrap; }
 [data-layout="portrait"] .rb-cols { grid-template-columns: 1fr; gap: 20px; }
 [data-layout="portrait"] .rb-go { width: 100%; font-size: 22px; }
 [data-layout="portrait"] .rb-btnwrap { align-self: stretch; }
