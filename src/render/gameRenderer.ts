@@ -1,7 +1,10 @@
+import './canvasCompat';
 import './tonemap';
 import {
   CustomToneMapping,
   Group,
+  type InstancedMesh,
+  type Material,
   Mesh,
   PerspectiveCamera,
   Scene,
@@ -9,6 +12,7 @@ import {
   Vector3,
   WebGLRenderer,
   type Object3D,
+  type Texture,
 } from 'three';
 import type { GuideSpec, LayoutMode, QualitySetting, QualityTier, RequestTimeScale, ScreenPt, SimEvent } from '../contracts';
 import { NO_GUIDES } from '../contracts';
@@ -25,17 +29,17 @@ import { CameraRig } from './camera';
 import { Character } from './character';
 import { Clouds } from './clouds';
 import { ColdOpen } from './coldOpen';
-import { makeCreatureMesh } from './creatureMesh';
+import { creatureGeometry, isCachedCreatureGeometry, makeCreatureMesh } from './creatureMesh';
 import { CreatureVisuals, type CreatureFrame } from './creatures';
 import { Lighting } from './environment';
 import { GameplayObjects } from './gameplayObjects';
 import { Guides } from './guides';
 import { collectHitStop, grabHitStop, perfectSlowMo, TRAUMA } from './juice';
-import { sharedTime } from './materials';
+import { inkMaterial, seeThrough, sharedTime, toonGradient, toonVertexMaterial, vertexMaterial } from './materials';
 import { Particles } from './particles';
 import { PortraitFactory } from './portraits';
 import { Props } from './props';
-import { DprController, resolveTier, TIERS, type TierParams } from './quality';
+import { DprController, FrameCap, resolveTier, TIERS, type TierParams } from './quality';
 import { Ribbon } from './ribbon';
 import { Rope } from './rope';
 import { ShadowRig } from './shadows';
@@ -114,7 +118,7 @@ export class GameRenderer {
   private moodTarget = 0;
   private moodForced: 0 | 1 | null = null;
   private danger = 0;
-  private lastRenderMs = -1e9;
+  private readonly frameCap = new FrameCap();
   private lastFrameMs = 0;
   private frameMs = 0;
   private width = 1;
@@ -130,6 +134,10 @@ export class GameRenderer {
   private shopArrow = false;
   private shopCheckT = 0;
   private wasSplashed = false;
+  private lastReduce = false;
+  /** Shader programs kept alive for the session (warm-up creature materials), see warmUp(). */
+  private readonly keepAlive: Material[] = [];
+  private readonly warmCam = new PerspectiveCamera(62, 1, 0.1, 1800);
   /** Runtime DPR adaptation (§6.1). Sandbox screenshots turn it off. */
   adaptiveDpr = true;
   // Per-frame parameter objects, reused (no allocation in render()).
@@ -137,6 +145,11 @@ export class GameRenderer {
   private readonly worldFrame = { time: 0, dt: 0, targetId: -1, danger: 0, player: new Vector3(), shopArrow: false, reach: 0 };
   private creatureFrame: CreatureFrame | null = null;
   private buddyFrame: BuddyFrame | null = null;
+  /** Island top under a point, or the sea surface. */
+  private readonly groundAt = (x: number, z: number, y: number): number => {
+    const g = this.course ? groundHeightAt(this.course, x, z, y) : 0;
+    return g > 0.5 ? g : waveHeight(x, z, this.lastTime);
+  };
   private readonly hookPos = (id: number, out: Vector3): Vector3 | null => {
     const anchors = this.course?.anchors;
     if (!anchors) return null;
@@ -174,7 +187,9 @@ export class GameRenderer {
 
   private applyTier(tier: QualityTier): void {
     this.params = TIERS[tier];
-    this.dpr.reset(this.params.dprCap, tier);
+    // Never render more pixels than the screen has (Medium's 1.25 on a 1× screen would out-draw High).
+    const device = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    this.dpr.reset(Math.min(this.params.dprCap, Math.max(1, device)), tier);
     this.renderer.setPixelRatio(this.dpr.dpr);
     this.renderer.setSize(this.width, this.height, false);
   }
@@ -182,12 +197,9 @@ export class GameRenderer {
   private build(): void {
     const course = this.course!;
     const q = this.params;
-    // Tear down a previous build (quality change).
+    // Tear down a previous build (quality change): geometries, materials, their textures and the shadow map.
     this.scene.remove(this.root);
-    this.root.traverse((o) => {
-      const m = o as Mesh;
-      if (m.isMesh) m.geometry?.dispose?.();
-    });
+    if (this.world) this.disposeBuild();
     this.root = new Group();
     this.scene.add(this.root);
 
@@ -201,11 +213,12 @@ export class GameRenderer {
     this.clouds.setCount(q.clouds);
     this.water = new Water(q.waterCells, q.waterDetail);
     this.shore = buildShore([course.home, ...course.islands.map((i) => i.solid)], q.shoreRings);
-    this.world = new World(course, { edgeLines: q.edgeLines, hookOutline: q.tier !== 'low' });
+    this.world = new World(course, { edgeLines: q.edgeLines, hookOutline: q.hookOutline });
     this.particles = new Particles(this.root, q.particleCap);
     this.blobs = new BlobShadows();
     this.character = new Character();
     this.creatures = new CreatureVisuals(course, this.particles, this.blobs);
+    this.creatures.labels.setViewport(this.width, this.height);
     this.rope = new Rope(this.root);
     this.ribbon = new Ribbon(this.root);
     this.speedLines = new SpeedLines(this.root);
@@ -219,21 +232,27 @@ export class GameRenderer {
     if (this.props) this.root.add(this.props.group);
     this.root.add(this.sky.mesh, this.clouds.mesh, this.water.mesh, this.shore, this.world.group, this.blobs.mesh, this.character.root, this.creatures.group, this.objects.group);
     this.lastReachLevel = -1;
+    this.lastFrameMs = 0;
     this.rig.reduceMotion = this.reduceMotion;
     if (!this.rig.yaw) this.rig.snapBehind(0, -1);
   }
 
   private async warmUp(): Promise<void> {
-    // Make every effect visible once (plus one creature per mutation) and compile.
-    const warm = new Group();
-    for (let m = 0; m < 4; m++) {
-      const c = makeCreatureMesh({ speciesId: 'toastopus', mutation: m });
-      c.position.set(m * 3, -50, 0);
-      warm.add(c);
+    // Make every effect visible once (plus one creature per mutation) and compile. The creature materials are
+    // kept (never disposed) so their programs stay cached for the whole session: a program is destroyed with
+    // its last material, and the first Gold/Diamond/Rainbow creature would otherwise compile mid-run.
+    if (!this.keepAlive.length) {
+      for (let m = 0; m < 4; m++) this.keepAlive.push(makeCreatureMesh({ speciesId: 'toastopus', mutation: m }).material);
+      const ghost = makeCreatureMesh({ speciesId: 'ghost_galleon', mutation: 0 }).material;
+      ghost.transparent = true;
+      this.keepAlive.push(ghost);
     }
-    const ghost = makeCreatureMesh({ speciesId: 'ghost_galleon', mutation: 0 });
-    ghost.material.transparent = true;
-    warm.add(ghost);
+    const warm = new Group();
+    this.keepAlive.forEach((mat, i) => {
+      const c = new Mesh(creatureGeometry(i < 4 ? 'toastopus' : 'ghost_galleon'), mat);
+      c.position.set(i * 3, -50, 0);
+      warm.add(c);
+    });
     this.root.add(warm);
     const hidden: Object3D[] = [];
     this.root.traverse((o) => {
@@ -242,17 +261,57 @@ export class GameRenderer {
         o.visible = true;
       }
     });
-    this.camera.position.set(0, 10, 20);
-    this.camera.lookAt(0, 0, 0);
-    this.camera.updateMatrixWorld();
+    // A separate camera: the main one keeps its rig pose while the rAF loop renders during the compile.
+    const cam = this.warmCam;
+    cam.position.set(0, 10, 20);
+    cam.lookAt(0, 0, 0);
+    cam.updateMatrixWorld();
+    let ready: Promise<unknown> | null = null;
     try {
-      await this.renderer.compileAsync(this.scene, this.camera);
+      // compileAsync creates every program synchronously, then waits for the (parallel) link to finish,
+      // so the hidden objects are restored right away (no decoy wave or warm-up meshes on screen meanwhile).
+      ready = this.renderer.compileAsync(this.scene, cam);
     } catch {
-      /* compileAsync can reject on context loss; the first render compiles instead. */
+      /* compileAsync can throw on context loss; the first render compiles instead. */
     }
     for (const o of hidden) o.visible = false;
     this.root.remove(warm);
-    for (const c of warm.children) ((c as Mesh).material as { dispose(): void }).dispose();
+    try {
+      await ready;
+    } catch {
+      /* compileAsync can reject on context loss; the first render compiles instead. */
+    }
+  }
+
+  /** Frees the GPU resources of the current build. Keeps the shared module materials and cached creature geometry. */
+  private disposeBuild(): void {
+    const keep = new Set<object>([toonVertexMaterial, inkMaterial, vertexMaterial, toonGradient, ...this.keepAlive]);
+    const mats = new Set<Material>();
+    const texs = new Set<Texture>();
+    const addTex = (v: unknown) => {
+      if (v && (v as Texture).isTexture && !keep.has(v as object)) texs.add(v as Texture);
+    };
+    this.root.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh && !(o as { isSprite?: boolean }).isSprite) return;
+      if (m.isMesh && !isCachedCreatureGeometry(m.geometry)) m.geometry?.dispose?.();
+      if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
+      const list = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of list) if (mat && !keep.has(mat)) mats.add(mat);
+    });
+    for (const mat of mats) {
+      for (const v of Object.values(mat)) addTex(v);
+      const uniforms = (mat as { uniforms?: Record<string, { value: unknown }> }).uniforms;
+      if (uniforms) for (const u of Object.values(uniforms)) addTex(u?.value);
+      mat.dispose();
+    }
+    // Shared caches (wild billboards, the face atlas, the creature matcap) are re-uploaded on next use if freed,
+    // so freeing everything found here is safe; it only costs an upload.
+    for (const t of texs) t.dispose();
+    this.world.dispose();
+    this.guides.dispose();
+    this.lighting.sun.shadow.map?.dispose();
+    this.lighting.sun.shadow.map = null;
   }
 
   /** The player's quality choice: applies now (rebuild + recompile behind the open panel). */
@@ -263,6 +322,7 @@ export class GameRenderer {
     this.applyTier(tier);
     this.build();
     void this.warmUp();
+    this.frameCap.reset();
   }
 
   /** Tier to save for the next load (§6.1), or null. */
@@ -279,6 +339,7 @@ export class GameRenderer {
     this.width = Math.max(1, w);
     this.height = Math.max(1, h);
     this.renderer.setSize(this.width, this.height, false);
+    this.creatures?.labels.setViewport(this.width, this.height);
     this.camera.aspect = this.width / this.height;
     this.rig.setBaseFov(layout === 'portrait' || this.camera.aspect < 0.8 ? 75 : 62);
     this.camera.updateProjectionMatrix();
@@ -310,15 +371,14 @@ export class GameRenderer {
     this.moodForced = target;
   }
 
-  /** Extra (not in the §10.3 list): play a pedestal creature's signature idle after a tap. */
+  /** Extra (not in the §10.3 list): play a pedestal creature's signature idle after a tap (a hop with Reduce motion). */
   tapPedestal(i: number): void {
-    this.creatures?.tapPedestal(i, this.lastTime);
+    this.creatures?.tapPedestal(i, this.lastTime, this.reduceMotion || this.lastReduce);
   }
 
-  /** Time-based render cap (§6.1): Low and Medium skip frames closer than 15 ms. */
+  /** Time-based render cap (§6.1): Low and Medium render at most one frame per 15 ms (see FrameCap). */
   shouldRender(nowMs: number): boolean {
-    if (nowMs - this.lastRenderMs >= this.params.frameCapMs - 0.5) return true;
-    return false;
+    return this.frameCap.ready(nowMs, this.params.frameCapMs);
   }
 
   // ---------- Events (§5.3 graphics column) ----------
@@ -419,8 +479,10 @@ export class GameRenderer {
         this.splashFx(tmpV.copy(p), 1.8);
         this.rig.addTrauma(TRAUMA.splash);
         this.character.onSplash(t);
+        if (e.practice) this.creatures.practiceSplash(t);
         break;
       case 'respawn':
+        this.airMinVy = 0;
         this.rope.hide();
         this.ribbon.reset();
         if (e.reason === 'wave') this.rig.reset(sim.player.pos);
@@ -467,7 +529,7 @@ export class GameRenderer {
     }
     this.particles.burst(at, '#BFEFFF', Math.round(10 * k), { speed: 6, up: 5, size: 0.22, life: 0.7, gravity: 22 });
     this.particles.burst(at, '#FFFFFF', Math.round(16 * k), { speed: 4 * k, size: 0.6, life: 0.6, flat: true, puff: true, gravity: 0, drag: 4 });
-    this.wave.spray.emit(at.x, at.y + 1, at.z, 0, 4, 0, 3 * k, 0.8);
+    this.wave.spray.emit(at.x, at.y + 1, at.z, 0, 4, 0, 1.3 * k, 0.45);
   }
 
   // ---------- Per frame ----------
@@ -475,9 +537,10 @@ export class GameRenderer {
   render(f: RenderFrame): void {
     if (!this.course) return;
     const now = performance.now();
-    if (this.lastFrameMs > 0) this.frameMs = now - this.lastFrameMs;
+    // A gap over 250 ms is a hidden tab, a stall or a rebuild, not the frame rate: keep it out of the DPR average.
+    const gap = this.lastFrameMs > 0 ? now - this.lastFrameMs : 0;
+    this.frameMs = gap > 0 && gap < 250 ? gap : 0;
     this.lastFrameMs = now;
-    this.lastRenderMs = now;
     const sim = f.sim;
     const state = f.state;
     this.lastSim = sim;
@@ -487,6 +550,7 @@ export class GameRenderer {
     const t = f.time;
     const q = this.params;
     const reduce = f.reduceMotion || this.reduceMotion;
+    this.lastReduce = reduce;
     this.rig.reduceMotion = reduce;
     sharedTime.value = t;
 
@@ -546,6 +610,7 @@ export class GameRenderer {
     this.rig.update(dt, player.pos, player.vel, t, player.mode !== 'ground', follow, swinging);
     this.camera.updateMatrixWorld();
     this.camera.getWorldDirection(fwd);
+    this.updateSeeThrough(player.pos, splashed);
 
     // Rope.
     if (swinging && player.anchor && !splashed) {
@@ -583,7 +648,7 @@ export class GameRenderer {
       sim.time,
       state.carried,
       state.base,
-      state.multiplier,
+      state.multiplier * state.streakBonus,
       this.character.headTop.matrixWorld,
       this.character.root.quaternion,
       player.vel,
@@ -618,11 +683,13 @@ export class GameRenderer {
     this.world.update(wf);
     this.objects.update(t, dt, sim, sim.time, this.particles, player.pos);
     this.props?.update(dt, player.pos, this.particles);
+    // Golden/Big look from the sim every frame (two uniforms), so a rebuild mid-warning keeps it.
+    if (wave.phase !== 'calm') this.wave.setVariant(wave.golden, wave.big);
     this.wave.update(dt, wave, player.pos.x, this.camera.quaternion, this.particles, WAVE.warning);
 
     // Guides and the predicted landing ring.
     const land = player.mode === 'air' && !splashed ? this.predictLanding(player.pos, player.vel) : null;
-    this.guides.update(f.guides ?? NO_GUIDES, t, land, this.hookPos, this.camera.quaternion);
+    this.guides.update(f.guides ?? NO_GUIDES, t, land, this.hookPos, this.camera, player.pos, this.groundAt);
 
     // Cold open.
     if (this.coldOpenPending) {
@@ -638,8 +705,22 @@ export class GameRenderer {
     if (this.shadows.enabled) this.shadows.follow(player.pos);
     this.particles.update(dt, this.camera.quaternion);
 
-    this.portraits.pump(3);
+    this.portraits.pump(2);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Screen circle around the player inside which decor and palms in front of them dither away. */
+  private updateSeeThrough(pos: Vector3, splashed: boolean): void {
+    const st = seeThrough.value;
+    st.w = 0;
+    if (splashed) return;
+    const depth = -tmpV2.set(pos.x, pos.y + 1.2, pos.z).applyMatrix4(this.camera.matrixWorldInverse).z;
+    if (depth < 0.5) return;
+    tmpV2.set(pos.x, pos.y + 1.2, pos.z).project(this.camera);
+    if (Math.abs(tmpV2.x) > 1.2 || Math.abs(tmpV2.y) > 1.2) return;
+    const r = this.renderer.getPixelRatio();
+    const pxPerM = (this.height * r) / 2 / (depth * Math.tan((this.camera.fov * Math.PI) / 360));
+    st.set((tmpV2.x * 0.5 + 0.5) * this.width * r, (tmpV2.y * 0.5 + 0.5) * this.height * r, depth, Math.max(30 * r, 1.7 * pxPerM));
   }
 
   /** Ballistic landing point while airborne (G3b dashed ring). */
