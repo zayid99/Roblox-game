@@ -123,12 +123,12 @@ describe('FTUE bot (§7.5)', () => {
 });
 
 describe('wave step prompt (§7.2 step 7)', () => {
-  it("says YOU'RE SAFE (no ETA chip) when the meter does, WAVE. GET SAFE. with an ETA chip when not", () => {
+  it("says YOU'RE SAFE (no ETA chip) at home, WAVE. GET SAFE. with an ETA chip on an island", () => {
     const seen: { id: string; safe: boolean; chip: boolean }[] = [];
     runFtueBot({
       onFrame: (tf, h) => {
         const id = tf.prompt?.id;
-        if (id === 'wave:warn' || id === 'wave:safe') seen.push({ id, safe: h.sim.playerSafe(), chip: !!tf.prompt?.chip });
+        if (id === 'wave:warn' || id === 'wave:safe') seen.push({ id, safe: h.sim.safeSpot() === 'home' && h.sim.playerSafe(), chip: !!tf.prompt?.chip });
       },
     });
     // The bot waits at home: the pill must agree with the meter.

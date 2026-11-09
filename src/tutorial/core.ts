@@ -830,9 +830,19 @@ export class TutorialCore {
     };
   }
 
+  /**
+   * Safe for the step-7 pill and arrow: on home or a lighthouse top, or the wall has already gone past. Unlike the
+   * meter it ignores "above the crest", which flips on every high swing (each flip would re-pop the pill).
+   */
+  private safeNow(sim: GameSim): boolean {
+    if (sim.safeSpot()) return true;
+    if (sim.splashTime > 0 || sim.seaRespawnTime > 0 || sim.wave.phase !== 'surge') return false;
+    return !Number.isFinite(sim.wave.timeUntilReaches(sim.player.pos.z));
+  }
+
   private warnPrompt(sim: GameSim, state: GameState): PromptSpec {
-    // Same test as the wave meter's YOU'RE SAFE, so the pill never says GET SAFE next to it.
-    if (sim.playerSafe()) {
+    // Never GET SAFE while the player already stands where the wave cannot reach (the meter says YOU'RE SAFE).
+    if (this.safeNow(sim)) {
       return { id: 'wave:safe', headline: COPY.waveSafe.headline, sub: COPY.waveSafe.sub, size: 'normal', fail: false, glyph: 'none' };
     }
     const safe = this.safeTarget(sim, state);
@@ -905,7 +915,7 @@ export class TutorialCore {
               label: COPY.launch,
             };
           }
-        } else if (!sim.playerSafe()) {
+        } else if (!this.safeNow(sim)) {
           const safe = this.safeTarget(sim, state);
           if (safe) {
             g.arrow = { pos: safe.pos };
