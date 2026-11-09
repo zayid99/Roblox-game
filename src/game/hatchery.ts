@@ -3,6 +3,7 @@
 // base with the delivery rules (state.grantCreature). Buddy: one base creature follows the player and
 // adds a small bonus to delivery cash.
 import { MUTATIONS, RARITIES, SPECIES, creatureIncome, getSpecies, hasSpecies, pickSpecies, type CreatureRef } from './creatures';
+import { UPGRADES, rebirthMultiplier, round2, shopRound, type UpgradeLevels } from './economy';
 import type { Rng } from './rng';
 import type { DeliveryResult, GameState } from './state';
 import { ZONES } from './zones';
@@ -17,11 +18,11 @@ export function inHatcheryZone(x: number, z: number): boolean {
 }
 
 /**
- * Typical pedestal income ($/s) while the player is working through each zone, before rebirths.
- * Estimated from the economy: about 4 → 20 pedestals filled mostly with the previous zone's rarity
- * (rarity incomes ×3–3.3 per tier) plus the first few of the zone's own. Used only to tune prices.
+ * Typical income ($/s) when each zone is first reached, before rebirths: the pacing model's typical player
+ * (tests/pacing.test.ts checks these stay in line). Egg prices are EGG_MINUTES of it, so a zone's egg is a
+ * few minutes of income when the zone opens and gets cheaper as the base fills up.
  */
-export const STAGE_INCOME: readonly number[] = [4, 10, 30, 100, 400, 1500, 5000];
+export const STAGE_INCOME: readonly number[] = [2, 6, 50, 250, 1800, 10_000, 37_000];
 /** Egg price in minutes of the stage income above (spec: 3 to 6 minutes). */
 export const EGG_MINUTES = 4.5;
 
@@ -50,16 +51,8 @@ export const EGG_COLORS: readonly [string, string][] = [
   ['#3A2A7E', '#5EF3FF'],
 ];
 
-/** Rounds to a "shop" number: 2 significant digits, the second one 0 or 5 (1K, 2.5K, 8K, 25K...). */
-function nicePrice(v: number): number {
-  const p = Math.pow(10, Math.floor(Math.log10(v)) - 1);
-  const m = v / p;
-  const step = m >= 50 ? 10 : 5;
-  return Math.round(m / step) * step * p;
-}
-
 export function eggPrice(zone: number): number {
-  return nicePrice(STAGE_INCOME[zone] * EGG_MINUTES * 60);
+  return shopRound(STAGE_INCOME[zone] * EGG_MINUTES * 60);
 }
 
 export const EGGS: readonly EggDef[] = ZONES.map((z, i) => ({
@@ -70,9 +63,24 @@ export const EGGS: readonly EggDef[] = ZONES.map((z, i) => ({
   colors: EGG_COLORS[i % EGG_COLORS.length],
 }));
 
-/** An egg is for sale once its zone has been reached (bestZone ≥ zone); the Shallows Egg always is. */
-export function eggUnlocked(state: Pick<GameState, 'bestZone'>, zone: number): boolean {
-  return zone >= 0 && zone < EGGS.length && (zone === 0 || state.bestZone >= zone);
+/**
+ * An egg is for sale once its zone has been reached (bestZone ≥ zone) and while the current Rope Reach can grab
+ * that zone's hooks, so after a rebirth the eggs come back zone by zone. The Shallows Egg always is.
+ */
+export function eggUnlocked(state: Pick<GameState, 'bestZone'> & { levels?: UpgradeLevels }, zone: number): boolean {
+  if (!(zone >= 0 && zone < EGGS.length)) return false;
+  if (zone === 0) return true;
+  if (state.bestZone < zone) return false;
+  return !state.levels || UPGRADES.reach.value(state.levels.reach) + 1e-6 >= ZONES[zone].minReach;
+}
+
+/**
+ * What an egg costs this player: its base price × the rebirth multiplier (2 significant digits). Egg creatures
+ * earn × the multiplier too, so an egg costs the same minutes of income in every rebirth cycle.
+ */
+export function eggCost(state: Pick<GameState, 'rebirths'>, zone: number): number {
+  const base = EGGS[zone]?.price ?? Infinity;
+  return state.rebirths > 0 ? round2(base * rebirthMultiplier(state.rebirths)) : base;
 }
 
 export interface Odds {
@@ -130,7 +138,7 @@ export type HatchError = 'locked' | 'cash';
 /** Can the player hatch this egg now? null = yes. */
 export function hatchBlocker(state: GameState, zone: number): HatchError | null {
   if (!eggUnlocked(state, zone)) return 'locked';
-  if (state.cash < EGGS[zone].price) return 'cash';
+  if (state.cash < eggCost(state, zone)) return 'cash';
   return null;
 }
 
@@ -138,7 +146,7 @@ export function hatchBlocker(state: GameState, zone: number): HatchError | null 
 export function hatchEgg(state: GameState, zone: number, rng: Rng, featured: string | null = null): HatchOutcome | HatchError {
   const blocked = hatchBlocker(state, zone);
   if (blocked) return blocked;
-  state.cash -= EGGS[zone].price;
+  state.cash -= eggCost(state, zone);
   const ref = rollEgg(zone, rng, featured);
   const g = state.grantCreature(ref);
   state.counters.eggsHatched++;
@@ -227,9 +235,9 @@ export function buildHatcheryView(state: GameState): HatcheryView {
     name: e.name,
     zoneName: ZONES[e.zone].name,
     rarity: e.rarity,
-    price: e.price,
+    price: eggCost(state, e.zone),
     unlocked: eggUnlocked(state, e.zone),
-    affordable: state.cash >= e.price,
+    affordable: state.cash >= eggCost(state, e.zone),
     odds: eggOdds(e.zone),
     species: SPECIES.filter((s) => s.rarity === e.rarity).map((s) => ({ id: s.id, name: s.name, found: (state.index[s.id] ?? 0) > 0 })),
     colors: e.colors,

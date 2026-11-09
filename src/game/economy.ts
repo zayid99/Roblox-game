@@ -1,6 +1,7 @@
 import { ECONOMY } from './config';
 import type { PlayerStats } from './player';
 import type { IconId } from '../contracts';
+import { ZONES } from './zones';
 
 export type UpgradeKey = 'speed' | 'reach' | 'power' | 'carry' | 'slots';
 
@@ -10,12 +11,31 @@ export interface UpgradeDef {
   iconId: IconId;
   desc: string;
   maxLevel: number;
-  baseCost: number;
-  growth: number;
+  /** Price of level L+1 = round(baseCost × growth^L), unless `costs` lists it. */
+  baseCost?: number;
+  growth?: number;
+  /** Explicit price of each level (index = current level). */
+  costs?: readonly number[];
   value(level: number): number;
   format(value: number): string;
 }
 
+/** Rope Reach at level L (meters). Every other level is the next zone's gate (ZONES[z].minReach). */
+const reachAt = (l: number) => 9.5 + 0.8 * l;
+/** The first Rope Reach level that grabs a zone's hooks. */
+export function reachGateLevel(zone: number): number {
+  const need = ZONES[zone]?.minReach ?? Infinity;
+  for (let l = 0; l < 100; l++) if (reachAt(l) + 1e-6 >= need) return l;
+  return Infinity;
+}
+
+/*
+ * Prices follow the zone ladder (see tests/pacing.test.ts): Rope Reach pairs are the zone gates (Coral Reef $40 is
+ * bought in the tutorial; Lagoon $20K, Stormy Seas $300K, Kraken Deep $14M, Volcano Bay $80M, Secret Reef $500M).
+ * Carry Slots and Base Pedestals are priced by what one more creature earns in the zone where they are bought, so
+ * every level pays for itself within about an hour of income. Run Speed and Swing Power are cheap "feel" levels
+ * spread across the whole climb (each costs about 1-2 minutes of the income a player has when it comes up).
+ */
 export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
   speed: {
     key: 'speed',
@@ -23,8 +43,8 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     iconId: 'speed',
     desc: 'Run faster on islands',
     maxLevel: 16,
-    baseCost: 20,
-    growth: 1.6,
+    baseCost: 25,
+    growth: 2.2,
     value: (l) => 10 + 0.75 * l,
     format: (v) => `${v.toFixed(1)} m/s`,
   },
@@ -33,10 +53,10 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     name: 'Rope Reach',
     iconId: 'reach',
     desc: 'Grab hooks from farther away',
-    maxLevel: 14,
-    baseCost: 40,
-    growth: 2.0,
-    value: (l) => 9.5 + 0.8 * l,
+    // Capped at the last zone's gate: more reach would unlock nothing.
+    maxLevel: reachGateLevel(ZONES.length - 1),
+    costs: [40, 150, 20_000, 90_000, 210_000, 4_000_000, 10_000_000, 25_000_000, 55_000_000, 150_000_000, 350_000_000],
+    value: reachAt,
     format: (v) => `${v.toFixed(1)} m`,
   },
   power: {
@@ -46,7 +66,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     desc: 'Pump harder and fling farther',
     maxLevel: 12,
     baseCost: 30,
-    growth: 1.7,
+    growth: 2.6,
     value: (l) => 1 + 0.1 * l,
     format: (v) => `×${v.toFixed(1)}`,
   },
@@ -56,8 +76,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     iconId: 'carry',
     desc: 'Carry more creatures per run',
     maxLevel: 6,
-    baseCost: 100,
-    growth: 3.0,
+    costs: [150, 3_000, 30_000, 250_000, 700_000, 1_200_000],
     value: (l) => 2 + l,
     format: (v) => `${v}`,
   },
@@ -67,8 +86,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     iconId: 'pedestal',
     desc: 'Room for more creatures at home',
     maxLevel: 8,
-    baseCost: 150,
-    growth: 2.5,
+    costs: [100, 1_000, 40_000, 400_000, 1_500_000, 5_000_000, 8_000_000, 12_000_000],
     value: (l) => 4 + 2 * l,
     format: (v) => `${v}`,
   },
@@ -84,7 +102,9 @@ export function emptyLevels(): UpgradeLevels {
 
 export function upgradeCost(key: UpgradeKey, level: number): number {
   const def = UPGRADES[key];
-  return Math.round(def.baseCost * Math.pow(def.growth, level));
+  const fixed = def.costs?.[level];
+  if (fixed !== undefined) return fixed;
+  return Math.round((def.baseCost ?? 0) * Math.pow(def.growth ?? 1, level));
 }
 
 /** Total cost of the next n levels starting at `level` (stops at the max level). */
@@ -134,12 +154,43 @@ export function baseSlots(levels: UpgradeLevels): number {
   return UPGRADES.slots.value(levels.slots);
 }
 
+/**
+ * Rebirth tuning. The income multiplier compounds: mult(n) = multGrowth^n. The cost of rebirth n+1 is
+ * baseCost × costGrowth^n × costAccel^(n(n-1)/2), rounded to 2 significant digits: each rebirth costs costGrowth × more,
+ * and that step itself grows by costAccel, so the first cycles get faster and later ones settle. `keep` = how many
+ * of the best creatures stay on the base (the rest swim free, unpaid).
+ */
+export const REBIRTH = {
+  baseCost: 1_200_000_000,
+  costGrowth: 1.1,
+  costAccel: 1.05,
+  multGrowth: 2,
+  keep: 0,
+};
+
+/** Rounds to 2 significant digits, the second one 0 or 5 (1K, 2.5K, 15M, 200M). */
+export function shopRound(v: number): number {
+  if (!(v > 0) || !Number.isFinite(v)) return v;
+  const p = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  const m = v / p;
+  const step = m >= 50 ? 10 : 5;
+  return Math.round(m / step) * step * p;
+}
+
+/** Rounds to 2 significant digits (1.2B, 1.3B, 25M). */
+export function round2(v: number): number {
+  if (!(v > 0) || !Number.isFinite(v)) return v;
+  const p = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.round(v / p) * p;
+}
+
 export function rebirthCost(rebirths: number): number {
-  return 1_000_000 * Math.pow(8, rebirths);
+  const n = Math.max(0, rebirths);
+  return round2(REBIRTH.baseCost * Math.pow(REBIRTH.costGrowth, n) * Math.pow(REBIRTH.costAccel, (n * (n - 1)) / 2));
 }
 
 export function rebirthMultiplier(rebirths: number): number {
-  return 1 + 0.5 * rebirths;
+  return Math.pow(REBIRTH.multGrowth, rebirths);
 }
 
 export function offlineEarnings(incomePerSec: number, elapsedSec: number): number {

@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { RARITIES, getSpecies } from '../src/game/creatures';
 import {
   BUDDY_BONUS, EGGS, EGG_MINUTES, EGG_UP_CHANCE, STAGE_INCOME, activeBuddy, buddyBonus, buildHatcheryView, deliveryMult,
-  eggOdds, eggPrice, eggUnlocked, hatchEgg, inHatcheryZone, rollEgg, setBuddy, formatPct, HATCHERY_ZONE,
+  eggCost, eggOdds, eggPrice, eggUnlocked, hatchEgg, inHatcheryZone, rollEgg, setBuddy, formatPct, HATCHERY_ZONE,
 } from '../src/game/hatchery';
+import { reachGateLevel, rebirthMultiplier } from '../src/game/economy';
 import { Rng } from '../src/game/rng';
 import { GameSim } from '../src/game/sim';
 import { GameState, emptyStats } from '../src/game/state';
@@ -67,18 +68,37 @@ describe('hatchery eggs', () => {
     expect(mutated / n).toBeLessThan(0.065);
   });
 
-  it('unlocks eggs by best zone reached', () => {
+  it('unlocks eggs by best zone reached, while Rope Reach can grab that zone', () => {
     const s = new GameState();
     expect([0, 1].map((z) => eggUnlocked(s, z))).toEqual([true, false]); // Shallows Egg from the start
     s.bestZone = 2;
+    s.levels.reach = reachGateLevel(2);
     expect([0, 1, 2, 3].map((z) => eggUnlocked(s, z))).toEqual([true, true, true, false]);
     expect(eggUnlocked(s, -1)).toBe(false);
     expect(eggUnlocked(s, 99)).toBe(false);
+    // After a rebirth (Rope Reach back to 0) the eggs come back zone by zone.
+    s.levels.reach = 0;
+    expect([0, 1, 2].map((z) => eggUnlocked(s, z))).toEqual([true, false, false]);
+    s.levels.reach = reachGateLevel(1);
+    expect([0, 1, 2].map((z) => eggUnlocked(s, z))).toEqual([true, true, false]);
+  });
+
+  it('scales egg prices with the rebirth multiplier', () => {
+    expect(eggCost({ rebirths: 0 }, 3)).toBe(EGGS[3].price);
+    expect(eggCost({ rebirths: 2 }, 3)).toBe(EGGS[3].price * rebirthMultiplier(2));
+    const s = new GameState();
+    s.rebirths = 1;
+    s.bestZone = 1;
+    s.levels.reach = reachGateLevel(1);
+    s.cash = EGGS[1].price;
+    expect(hatchEgg(s, 1, new Rng(1))).toBe('cash');
+    expect(buildHatcheryView(s).eggs[1].price).toBe(eggCost(s, 1));
   });
 
   it('hatching pays, grants the creature to the base and counts it', () => {
     const s = new GameState();
     s.bestZone = 1;
+    s.levels.reach = reachGateLevel(1);
     s.cash = EGGS[1].price + 10;
     const out = hatchEgg(s, 1, new Rng(1));
     expect(typeof out).toBe('object');

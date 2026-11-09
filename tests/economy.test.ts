@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { creatureIncome, rollCreature, RARITIES, SPECIES } from '../src/game/creatures';
-import { formatCash, offlineEarnings, upgradeCost, UPGRADES, UPGRADE_ORDER } from '../src/game/economy';
+import { REBIRTH, formatCash, offlineEarnings, upgradeCost, UPGRADES, UPGRADE_ORDER } from '../src/game/economy';
 import { Rng } from '../src/game/rng';
 import { GameState } from '../src/game/state';
 
@@ -71,7 +71,7 @@ describe('game state', () => {
     expect(s.buy('speed')).toBe(false);
   });
 
-  it('rebirth resets upgrades but keeps creatures and multiplies income', () => {
+  it('rebirth resets cash, upgrades and the base, and multiplies income', () => {
     const s = new GameState();
     s.base[0] = { speciesId: 'big_cheese', mutation: 0 };
     s.levels.speed = 5;
@@ -80,7 +80,9 @@ describe('game state', () => {
     expect(s.rebirth()).toBe(true);
     expect(s.levels.speed).toBe(0);
     expect(s.cash).toBe(0);
-    expect(s.incomePerSec()).toBeCloseTo(before * 1.5);
+    expect(s.base.filter(Boolean).length).toBe(REBIRTH.keep);
+    s.base[0] = { speciesId: 'big_cheese', mutation: 0 };
+    expect(s.incomePerSec()).toBeCloseTo(before * REBIRTH.multGrowth);
   });
 
   it('round-trips through a save and rejects garbage', () => {
