@@ -147,7 +147,13 @@ export class Voice {
     const stopAt = at + 0.04;
     if (stopAt < this.end) {
       this.end = stopAt;
-      for (const s of this.srcs) s.stop(stopAt);
+      for (const s of this.srcs) {
+        try {
+          s.stop(stopAt); // a second stop(): older WebKit throws InvalidStateError
+        } catch {
+          /* keeps its first stop time; the gain fade above already silences it */
+        }
+      }
     }
   }
 }

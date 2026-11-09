@@ -873,7 +873,8 @@ export class Game {
     // hit-stops of pickups, fast grabs and Perfect releases.
     const slowmo = tf.musicLowpass || tf.timeScale < 1 || this.timeScale.isActive('reveal');
     this.audio.update(
-      buildAudioFrame({ sim, state, realDt, panelOpen, slowmo, ftueStep: tf.step, lowTier: this.gfx.tier === 'low' }),
+      // Any pause (panel, resume card, ad) reads as a panel to the audio: the frozen sim must not keep stepping.
+      buildAudioFrame({ sim, state, realDt, panelOpen: panelOpen || paused, slowmo, ftueStep: tf.step, lowTier: this.gfx.tier === 'low' }),
     );
 
     this.saveTimer += realDt;

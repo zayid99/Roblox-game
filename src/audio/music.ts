@@ -171,8 +171,9 @@ export class Music {
 
   private loop = (): void => {
     if (!this.running) return;
-    this.tick();
+    // Re-arm first: one failed pass must not end the music for the rest of the session.
     this.timer = setTimeout(this.loop, TICK_MS);
+    this.tick();
   };
 
   private get nextT(): number {

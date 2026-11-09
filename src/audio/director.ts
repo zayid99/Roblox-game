@@ -26,6 +26,8 @@ export class AudioDirector {
   private musicVol = 50;
   private soundVol = 80;
   private suspendTimer: ReturnType<typeof setTimeout> | null = null;
+  /** We asked the context to suspend (ad / hidden tab); it may still read 'running' while that is in flight. */
+  private suspendIssued = false;
 
   // Logical state tracked even before unlock, so music starts in the right section.
   private phase: AudioFrame['wavePhase'] = 'calm';
@@ -60,51 +62,77 @@ export class AudioDirector {
 
   /** Call inside a user gesture: first gesture, and the resume overlay's tap. */
   unlock(): void {
+    if (!this.ctx && !this.create()) return;
+    const ctx = this.ctx!;
     try {
-      if (!this.ctx) {
-        const C: Ctor | undefined =
-          window.AudioContext ?? (window as unknown as { webkitAudioContext?: Ctor }).webkitAudioContext;
-        if (!C) return;
-        const ctx = new C({ latencyHint: 'interactive' });
-        this.ctx = ctx;
-        const eng = new Engine(ctx);
-        this.eng = eng;
-        this.music = new Music(eng);
-        this.sfx = new SfxBank(eng);
-        this.amb = new Ambience(eng);
-        eng.master.gain.value = 0;
-        this.applyVolumes();
-        this.applyTier();
-        ctx.addEventListener('statechange', () => this.apply());
-      }
-      const ctx = this.ctx;
-      const eng = this.eng!;
-      // iOS: a silent buffer inside the gesture unlocks output; 'interrupted' needs suspend → resume.
+      // iOS: a silent buffer inside the gesture unlocks output.
       const b = ctx.createBufferSource();
       b.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
       b.connect(ctx.destination);
       b.start(0);
       if (this.adPlaying || this.hidden) return;
       const st = ctx.state as string;
-      const fadeIn = (): void => {
-        const t = ctx.currentTime;
-        holdParam(eng.master.gain, t);
-        eng.master.gain.setValueAtTime(0, t);
-        this.apply(0.1); // ≈300 ms fade-in
-        this.startMusic();
-      };
-      if (st === 'interrupted') {
-        void ctx.suspend().then(() => ctx.resume()).then(fadeIn, () => undefined);
-      } else if (st !== 'running') {
-        void ctx.resume().then(fadeIn, () => undefined);
-      } else {
+      if (st === 'running') {
         this.apply(0.1);
         this.startMusic();
+        return;
       }
+      // resume() has to be called inside the gesture (WebKit checks the activation when it is called, not
+      // after an await). An iOS 'interrupted' context is cycled through suspend first, in the same gesture.
+      if (st === 'interrupted') void Promise.resolve(ctx.suspend()).catch(() => undefined);
+      this.suspendIssued = false;
+      void Promise.resolve(ctx.resume()).then(
+        () => this.fadeIn(),
+        () => undefined,
+      );
     } catch {
+      /* refused: the next gesture tries again (needsGesture stays true) */
+    }
+  }
+
+  /** Builds the context and the graph (first gesture). On failure nothing is kept, so a later gesture retries. */
+  private create(): boolean {
+    let ctx: AudioContext | null = null;
+    try {
+      const C: Ctor | undefined =
+        window.AudioContext ?? (window as unknown as { webkitAudioContext?: Ctor }).webkitAudioContext;
+      if (!C) return false;
+      ctx = new C({ latencyHint: 'interactive' });
+      const eng = new Engine(ctx);
+      const music = new Music(eng);
+      const sfx = new SfxBank(eng);
+      const amb = new Ambience(eng);
+      eng.master.gain.value = 0;
+      this.ctx = ctx;
+      this.eng = eng;
+      this.music = music;
+      this.sfx = sfx;
+      this.amb = amb;
+      this.applyVolumes();
+      this.applyTier();
+      ctx.addEventListener('statechange', () => this.apply());
+      return true;
+    } catch {
+      if (ctx) void Promise.resolve(ctx.close()).catch(() => undefined);
       this.ctx = null;
       this.eng = null;
+      this.music = null;
+      this.sfx = null;
+      this.amb = null;
+      return false;
     }
+  }
+
+  /** The context just (re)started: fade the master in from silence (≈300 ms) and start the music. */
+  private fadeIn(): void {
+    const ctx = this.ctx;
+    const eng = this.eng;
+    if (!ctx || !eng) return;
+    const t = ctx.currentTime;
+    holdParam(eng.master.gain, t);
+    eng.master.gain.setValueAtTime(0, t);
+    this.apply(0.1);
+    this.startMusic();
   }
 
   private startMusic(): void {
@@ -332,11 +360,16 @@ export class AudioDirector {
     eng.musicMod.gain.setTargetAtTime(mod, t, 0.07);
     eng.musicBus.gain.setTargetAtTime((f.wavePhase === 'surge' ? MIX.musicSurge : MIX.music) * vol(this.musicVol), t, 0.3);
 
+    // While a panel (or any pause) is up the sim is frozen and the frame repeats the last speed: no
+    // footsteps, rope sounds or speed wind until it runs again.
+    const live = !f.panelOpen;
+
     // Ambience.
     const surf = Math.max(0.35, Math.min(1, 1 - f.altitude / 40));
-    this.amb!.update(f.dt, surf, f.speed);
+    this.amb!.update(f.dt, surf, live ? f.speed : 0);
     const prox = f.wavePhase === 'surge' && this.surgeT >= 0 ? Math.max(0.15, Math.min(1, this.surgeT / 12)) : 0;
     this.amb!.rumble.set(prox);
+    if (!live) return;
 
     // Footsteps: the leg phase integrates speed × .9 rad/s; a step on every multiple of π.
     if (f.grounded && f.speed > 1.5) {
@@ -464,21 +497,19 @@ export class AudioDirector {
     this.suspendTimer = null;
     if (this.adPlaying || this.hidden) {
       const go = (): void => {
-        if (this.adPlaying || this.hidden) void ctx.suspend().catch(() => undefined);
+        if (!this.adPlaying && !this.hidden) return;
+        this.suspendIssued = true;
+        void Promise.resolve(ctx.suspend()).catch(() => undefined);
       };
+      // Ads: suspend once the 20 ms fade (apply) has fully settled, so the cut is silent.
       if (this.hidden) go();
-      else this.suspendTimer = setTimeout(go, 60);
-    } else if (ctx.state !== 'running') {
-      // May be refused without a gesture; then needsGesture is true and the resume overlay's tap calls unlock().
-      void ctx.resume().then(
-        () => {
-          const eng = this.eng!;
-          const t = ctx.currentTime;
-          holdParam(eng.master.gain, t);
-          eng.master.gain.setValueAtTime(0, t);
-          this.apply(0.1);
-          this.startMusic();
-        },
+      else this.suspendTimer = setTimeout(go, 120);
+    } else if (this.suspendIssued || ctx.state !== 'running') {
+      // A suspend still in flight reads 'running', so resume after our own suspend either way. May be refused
+      // without a gesture; then needsGesture is true and the next gesture (or the resume overlay) unlocks.
+      this.suspendIssued = false;
+      void Promise.resolve(ctx.resume()).then(
+        () => this.fadeIn(),
         () => undefined,
       );
     }
