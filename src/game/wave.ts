@@ -105,6 +105,11 @@ export class WaveSim {
     if (this.timer > WAVE.warning) this.phase = 'calm';
   }
 
+  /** Whether the next wave to come is Golden: during a surge the one after it, else the coming one. */
+  get nextGolden(): boolean {
+    return this.phase === 'surge' ? this.goldenPending || this.isGoldenNumber(this.count + 1) : this.golden;
+  }
+
   /** Makes the next wave Golden (Lucky Tide). During a surge it applies to the wave after. */
   forceGoldenNext(): void {
     if (this.phase === 'surge') this.goldenPending = true;

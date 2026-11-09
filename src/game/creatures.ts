@@ -148,8 +148,10 @@ export function rollCreature(zoneRarity: number, golden: boolean, rng: Rng, feat
   const u = rng.next();
   const up = golden ? 0.3 : 0.06;
   const down = zoneRarity > 0 && !golden ? 0.15 : 0;
-  if (u < up && rarity < RARITIES.length - 1) rarity++;
-  else if (u < up + down) rarity--;
+  // An up-roll at the top rarity keeps the creature there (it must not fall through to the down-roll).
+  if (u < up) {
+    if (rarity < RARITIES.length - 1) rarity++;
+  } else if (u < up + down) rarity--;
 
   const species = pickSpecies(rarity, rng, featured);
 

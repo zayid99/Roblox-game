@@ -1,7 +1,7 @@
 import { dayKey, formatClock, hashKey, msUntilNextDay, systemClock, weekKey, type Clock } from './clock';
 import { buyCosmetic, equipCosmetic, lockerItems, markCosmeticSeen } from './cosmetics';
 import { RARITIES, SPECIES } from './creatures';
-import { claimedToday, dailyClaimable, dailySpec, nextDailyDay, recordDailyClaim } from './daily';
+import { WEEKLY_ROPES, claimedToday, dailyClaimable, dailySpec, nextDailyDay, recordDailyClaim } from './daily';
 import { cheapestUpgradeCost, offlineEarnings, rebirthCost } from './economy';
 import { featuredSpeciesFor } from './featured';
 import { GIFTS, giftState, readyGifts, rolloverGifts, secondsToNextGift } from './gifts';
@@ -57,7 +57,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
   readonly events: ProgressEvent[] = [];
   /** True when the clock went backwards since the last save: no time-based rewards this session. */
   readonly rollbackBlocked: boolean;
-  /** Offline earnings at load (base income, capped at 1 h); 0 once collected. */
+  /** Offline earnings at load (base income, capped at 1 h; 0 below $1); 0 once collected. */
   offline: number;
 
   private readonly pending: ProgressEvent[] = [];
@@ -76,8 +76,15 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     const now = clock.now();
     this.rollbackBlocked = state.lastSeen > 0 && now < state.lastSeen - ROLLBACK_GUARD_MS;
     this.returning = state.savedAt > 0;
-    this.offline =
-      this.returning && !this.rollbackBlocked ? offlineEarnings(state.baseIncomePerSec(), (now - state.savedAt) / 1000) : 0;
+    // Offline time starts at the save, or earlier when the last session left offline time unpaid
+    // (Welcome Back card never collected, or the tab was closed while hidden).
+    const from = state.offlineFrom ?? state.savedAt;
+    const offline =
+      this.returning && !this.rollbackBlocked ? offlineEarnings(state.baseIncomePerSec(), (now - from) / 1000) : 0;
+    // Below $1 the Welcome Back card does not show it, so nothing is owed.
+    this.offline = offline >= 1 ? offline : 0;
+    // Until CLAIM, saves keep the start of the unpaid time, so a reload or a closed tab never loses it.
+    if (!this.rollbackBlocked) state.offlineFrom = this.offline > 0 ? from : null;
     const today = dayKey(now);
     if (!this.rollbackBlocked) rolloverGifts(state.gifts, today);
     for (const i of readyGifts(state.gifts)) this.giftsNotified.add(i);
@@ -133,10 +140,13 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     if (!this.rollbackBlocked) {
       if (rolloverGifts(state.gifts, today)) this.giftsNotified.clear();
       if (ctx.active) state.gifts.activeSec += realDt;
-      for (const i of readyGifts(state.gifts)) {
-        if (this.giftsNotified.has(i)) continue;
-        this.giftsNotified.add(i);
-        this.events.push({ type: 'giftReady', index: i });
+      // The FREE tile is hidden during the FTUE: no "Free gift ready" toasts until it unlocks.
+      if (this.ftueDone && this.ftueDoneSeen) {
+        for (const i of readyGifts(state.gifts)) {
+          if (this.giftsNotified.has(i)) continue;
+          this.giftsNotified.add(i);
+          this.events.push({ type: 'giftReady', index: i });
+        }
       }
     }
     if (ctx.active) state.counters.playSec += realDt;
@@ -186,6 +196,8 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     if (!this.ftueDoneSeen && this.ftueDone) {
       this.ftueDoneSeen = true;
       this.events.push({ type: 'unlock', what: 'index' }, { type: 'unlock', what: 'free' });
+      // Gifts that became ready during the FTUE are announced by the FREE unlock toast and its badge.
+      for (const i of readyGifts(state.gifts)) this.giftsNotified.add(i);
     }
     if (!this.lockerUnlocked && voyageDone(state)) {
       this.lockerUnlocked = true;
@@ -247,7 +259,10 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
       else if (i === done) state = 'tomorrow';
       else if (i === done + 1 && !claimedToday(d, today)) state = 'tomorrow';
       else state = 'later';
-      const spec = dailySpec(day, week, this.state.cosmetics.owned);
+      // A claimed Day 7 shows the rope it gave, not what the next claim would give now that it is owned
+      // (weekly ropes only come from that claim).
+      const owned = this.state.cosmetics.owned;
+      const spec = dailySpec(day, week, state === 'claimed' && day === 7 ? owned.filter((id) => id !== WEEKLY_ROPES[week - 1]) : owned);
       const reward = resolveReward(this.state, spec, new Rng(hashKey(this.dailySeed(cycleStart + i))));
       tiles.push({ day, reward, state, teaser: day === 5 || day === 7 });
     }
@@ -258,7 +273,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
 
   /** Claims one ready gift, or all of them. Null when nothing was claimable. */
   claimGift(i: number | 'all'): Reward | null {
-    if (this.rollbackBlocked) return null;
+    if (this.rollbackBlocked || !this.ftueDone) return null;
     const g = this.state.gifts;
     const list = i === 'all' ? readyGifts(g) : giftState(g, i) === 'ready' ? [i] : [];
     if (!list.length) return null;
@@ -275,12 +290,16 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
 
   private pendingGiftRewards(): Reward[] {
     const g = this.state.gifts;
-    return g.pending.map((idx, k) => resolveReward(this.state, GIFTS[idx].spec, new Rng(hashKey(`pending:${idx}:${k}`))));
+    return g.pending.flatMap((idx, k) => {
+      const gift = GIFTS[idx];
+      return gift ? [resolveReward(this.state, gift.spec, new Rng(hashKey(`pending:${idx}:${k}`)))] : [];
+    });
   }
 
   /** Grants gifts left unclaimed before midnight (when no Welcome Back card shows: toast "Gifts from yesterday"). */
   claimPendingGifts(): Reward | null {
-    if (this.rollbackBlocked || !this.state.gifts.pending.length) return null;
+    // During the FTUE they stay pending (never lost) until a later session.
+    if (this.rollbackBlocked || !this.ftueDone || !this.state.gifts.pending.length) return null;
     let total: Reward = {};
     for (const reward of this.pendingGiftRewards()) {
       this.apply(reward, 'pendingGifts');
@@ -303,7 +322,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     return {
       offline: this.offline,
       daily,
-      pendingGifts: this.rollbackBlocked ? [] : this.pendingGiftRewards(),
+      pendingGifts: this.rollbackBlocked || !this.ftueDone ? [] : this.pendingGiftRewards(),
       // The lead also requires platform.hasSdk.
       canDouble: this.offline > 0 && this.offline >= 60 * this.state.baseIncomePerSec(),
     };
@@ -318,11 +337,34 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
       this.apply({ cash }, 'offline');
       total = mergeRewards(total, { cash });
     }
+    if (!this.rollbackBlocked) this.state.offlineFrom = null;
     const daily = this.claimDaily();
     if (daily) total = mergeRewards(total, daily);
     const gifts = this.claimPendingGifts();
     if (gifts) total = mergeRewards(total, gifts);
     return total;
+  }
+
+  // ---------- Background tab ----------
+
+  /** The tab was hidden: offline time starts now (a pending Welcome Back card keeps its earlier start). */
+  markAway(): void {
+    if (!this.rollbackBlocked && this.state.offlineFrom === null) this.state.offlineFrom = this.clock.now();
+  }
+
+  /**
+   * The tab is visible again: pays the time away as offline earnings (base income, 1 h cap), the same
+   * as closing and reopening the game would. Returns the cash paid. Nothing while a Welcome Back card
+   * is unpaid (its offline time already runs from the earlier start).
+   */
+  creditAway(): number {
+    const from = this.state.offlineFrom;
+    if (this.rollbackBlocked || from === null || this.offline > 0) return 0;
+    this.state.offlineFrom = null;
+    const cash = offlineEarnings(this.state.baseIncomePerSec(), (this.clock.now() - from) / 1000);
+    if (cash <= 0) return 0;
+    this.apply({ cash }, 'away');
+    return cash;
   }
 
   // ---------- Locker, Lucky Tide ----------
@@ -344,7 +386,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
   useLuckyTide(sim: GameSim): boolean {
     const w = sim.wave;
     if (this.state.tokens.luckyTide <= 0) return false;
-    if (w.golden && w.phase !== 'surge') return false;
+    if (w.nextGolden) return false;
     this.state.tokens.luckyTide--;
     w.forceGoldenNext();
     return true;
@@ -371,7 +413,8 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     const nextGift = this.rollbackBlocked ? null : secondsToNextGift(state.gifts);
     const indexNew = this.newSpecies().length;
     const rCost = rebirthCost(state.rebirths);
-    const rebirthVisible = cash >= rCost * REBIRTH_VISIBLE_AT;
+    // Once unlocked the tile stays (spec: tiles "appear when they unlock"), so spending cash never hides it again.
+    const rebirthVisible = !!state.flags['unlock:rebirth'] || state.rebirths > 0 || cash >= rCost * REBIRTH_VISIBLE_AT;
     const canRebirth = cash >= rCost;
 
     // Badge cap: at most 2, priority FREE > Rebirth > Index.

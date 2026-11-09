@@ -19,6 +19,12 @@ export class TimeScale {
     return this.current;
   }
 
+  /** True while request `id` is live with a scale below 1. */
+  isActive(id: Id): boolean {
+    const r = this.live.get(id);
+    return !!r && r.left > 0 && r.scale < 1;
+  }
+
   update(realDt: number): number {
     let target = 1;
     for (const [id, r] of this.live) {

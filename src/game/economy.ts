@@ -153,23 +153,38 @@ function trimZeros(t: string): string {
   return t.includes('.') ? t.replace(/\.?0+$/, '') : t;
 }
 
+/**
+ * How a value at or above 1000 is cut to 3 significant digits: 'nearest' (default), or 'down' for
+ * balances, so a balance never reads as much as a price it cannot pay yet ($999.6K shows "$999K", not "$1M").
+ */
+export type Rounding = 'nearest' | 'down';
+
 /** Spec §2.1: integers below 1000, then 3 significant digits with K/M/B/T/Qa/Qi ("1.25K", "12.5K", "1M"). */
-export function formatNumber(n: number): string {
+export function formatNumber(n: number, rounding: Rounding = 'nearest'): string {
   if (!Number.isFinite(n)) return '∞';
   const sign = n < 0 ? '-' : '';
   let v = Math.abs(n);
   if (v < 1000) return sign + Math.floor(v).toString();
+  const down = rounding === 'down';
   let i = 0;
-  while (v >= 999.5 && i < SUFFIXES.length - 1) {
+  while (v >= (down ? 1000 : 999.5) && i < SUFFIXES.length - 1) {
     v /= 1000;
     i++;
   }
   const digits = v >= 100 ? 0 : v >= 10 ? 1 : 2;
-  return `${sign}${trimZeros(v.toFixed(digits))}${SUFFIXES[i]}`;
+  const p = Math.pow(10, digits);
+  // The epsilon keeps exact values exact (2340 / 1000 * 100 is 233.99999999999997).
+  const text = down ? (Math.floor(v * p + 1e-6) / p).toFixed(digits) : v.toFixed(digits);
+  return `${sign}${trimZeros(text)}${SUFFIXES[i]}`;
 }
 
-export function formatCash(n: number): string {
-  return `$${formatNumber(n)}`;
+export function formatCash(n: number, rounding: Rounding = 'nearest'): string {
+  return `$${formatNumber(n, rounding)}`;
+}
+
+/** A cash balance (the cash pill, the rebirth bar): rounded down, see Rounding. */
+export function formatBalance(n: number): string {
+  return formatCash(n, 'down');
 }
 
 /** Income per second: one decimal below 10 ("$1.2/s", "$3/s"), integers to 999, then suffixes. */

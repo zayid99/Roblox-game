@@ -36,9 +36,12 @@ export function buildRebirthView(state: GameState): RebirthView {
     multNow: state.multiplier,
     multNext,
     can: state.canRebirth(),
-    visible: state.rebirths > 0 || state.cash >= cost * REBIRTH_VISIBLE_AT,
+    // Sticky once unlocked (Progression sets the flag), like the rail tile.
+    visible: state.rebirths > 0 || !!state.flags['unlock:rebirth'] || state.cash >= cost * REBIRTH_VISIBLE_AT,
+    // The Rebirth tab pairs these lines by index with its icons: keep pearl, locker, index, rebirth, flame (then a
+    // check); lose cash, shop, creature, pedestal. state.rebirth() keeps the best creatures that fit and sells the rest.
     keep: ['Pearls', 'Locker items', 'Index', `Rebirth bonus ×${multNext.toFixed(1)}`, 'Best zone record', 'Your best creatures'],
-    lose: ['Cash', 'All upgrades', `Pedestals back to ${baseSlots(emptyLevels())}`],
+    lose: ['Cash', 'All upgrades', "Creatures that don't fit (sold)", `Pedestals back to ${baseSlots(emptyLevels())}`],
   };
 }
 

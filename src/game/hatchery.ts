@@ -3,6 +3,7 @@
 // base with the delivery rules (state.grantCreature). Buddy: one base creature follows the player and
 // adds a small bonus to delivery cash.
 import { MUTATIONS, RARITIES, SPECIES, creatureIncome, getSpecies, hasSpecies, pickSpecies, type CreatureRef } from './creatures';
+import { DISCOVERY_PEARLS } from './rewards';
 import type { Rng } from './rng';
 import type { DeliveryResult, GameState } from './state';
 import { ZONES } from './zones';
@@ -123,6 +124,8 @@ export interface HatchOutcome {
   isNewSpecies: boolean;
   isNewMutation: boolean;
   result: DeliveryResult;
+  /** First-discovery Pearls paid for a new species (DISCOVERY_PEARLS, else 0), already added to the state. */
+  pearls?: number;
 }
 
 export type HatchError = 'locked' | 'cash';
@@ -142,7 +145,10 @@ export function hatchEgg(state: GameState, zone: number, rng: Rng, featured: str
   const ref = rollEgg(zone, rng, featured);
   const g = state.grantCreature(ref);
   state.counters.eggsHatched++;
-  return { ref, zone, eggName: EGGS[zone].name, isNewSpecies: g.isNewSpecies, isNewMutation: g.isNewMutation, result: g.result };
+  // A species found first in an egg pays the first-discovery Pearls, like a wild catch (§9.7).
+  const pearls = g.isNewSpecies ? DISCOVERY_PEARLS : 0;
+  state.pearls += pearls;
+  return { ref, zone, eggName: EGGS[zone].name, isNewSpecies: g.isNewSpecies, isNewMutation: g.isNewMutation, result: g.result, pearls };
 }
 
 // ---------------------------------------------------------------- Buddy
@@ -235,7 +241,8 @@ export function buildHatcheryView(state: GameState): HatcheryView {
     colors: e.colors,
   }));
   const buddy = activeBuddy(state);
-  const mult = state.multiplier;
+  // Same factors as baseIncomePerSec(), so the '+$/s' here matches the HUD income.
+  const mult = state.multiplier * state.streakBonus;
   const seen = new Set<string>();
   const options: BuddyOption[] = [];
   for (const c of state.base) {

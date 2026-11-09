@@ -1,5 +1,7 @@
 import { ECONOMY } from './config';
 import { creatureIncome, hasSpecies, type CreatureRef } from './creatures';
+import { GIFTS } from './gifts';
+import { ZONES } from './zones';
 import {
   UPGRADES,
   UPGRADE_ORDER,
@@ -81,6 +83,11 @@ export interface SaveDataV2 {
   featuredWeekSeen: string;
   /** Hatchery Buddy (a base creature that follows the player); missing in older v2 saves. */
   buddy?: CreatureRef | null;
+  /**
+   * Start of offline time not paid yet (an uncollected Welcome Back card, or a hidden tab), else null.
+   * Missing in older v2 saves, where savedAt is the start.
+   */
+  offlineFrom?: number | null;
 }
 
 /** The v0.1 save shape. */
@@ -95,7 +102,8 @@ export type SaveData = SaveDataV2;
 
 export interface DeliveryResult {
   placed: CreatureRef[];
-  sold: { creature: CreatureRef; cash: number }[];
+  /** Creatures sold for cash. `displaced`: a base creature pushed off its pedestal by a better one (not part of the delivery). */
+  sold: { creature: CreatureRef; cash: number; displaced?: boolean }[];
 }
 
 export const DEFAULT_ROPE = 'rope_hemp';
@@ -124,6 +132,8 @@ const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is 
 const intArr = (v: unknown): number[] =>
   Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number' && Number.isInteger(x) && x >= 0) : [];
 const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback);
+/** A local day key (clock.dayKey): YYYY-MM-DD. */
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 function sanitizeSettings(raw: unknown, base: Settings): Settings {
   const out = { ...base };
@@ -227,6 +237,8 @@ export class GameState {
   /** savedAt and lastSeen of the loaded save (0 for a new player). */
   savedAt = 0;
   lastSeen = 0;
+  /** Start of offline time not paid yet (see SaveDataV2.offlineFrom); managed by Progression. */
+  offlineFrom: number | null = null;
 
   constructor() {
     this.syncBaseSize();
@@ -352,7 +364,7 @@ export class GameState {
           placed = true;
           const cash = creatureIncome(old) * ECONOMY.sellSeconds * this.multiplier;
           this.earn(cash);
-          result.sold.push({ creature: old, cash });
+          result.sold.push({ creature: old, cash, displaced: true });
         } else {
           const cash = creatureIncome(c) * ECONOMY.sellSeconds * this.multiplier;
           this.earn(cash);
@@ -474,6 +486,7 @@ export class GameState {
       hintsSeen: [...this.hintsSeen],
       featuredWeekSeen: this.featuredWeekSeen,
       buddy: this.buddy ? { ...this.buddy } : null,
+      offlineFrom: this.offlineFrom,
     };
   }
 
@@ -509,7 +522,8 @@ export class GameState {
     if (isObj(d.flags)) {
       for (const [k, v] of Object.entries(d.flags)) if (typeof v === 'boolean') this.flags[k] = v;
     }
-    this.bestZone = typeof d.bestZone === 'number' && Number.isFinite(d.bestZone) ? Math.floor(d.bestZone) : -1;
+    this.bestZone =
+      typeof d.bestZone === 'number' && Number.isFinite(d.bestZone) ? Math.max(-1, Math.min(ZONES.length - 1, Math.floor(d.bestZone))) : -1;
     this.savedAt = num(d.savedAt, 0);
     this.lastSeen = Math.max(this.savedAt, num(d.lastSeen, 0));
     this.pearls = int(d.pearls, 0);
@@ -528,13 +542,20 @@ export class GameState {
 
     const dl = isObj(d.daily) ? d.daily : {};
     this.daily = {
-      lastClaimDay: typeof dl.lastClaimDay === 'string' ? dl.lastClaimDay : null,
+      lastClaimDay: typeof dl.lastClaimDay === 'string' && DAY_KEY.test(dl.lastClaimDay) ? dl.lastClaimDay : null,
       count: int(dl.count, 0),
       week: Math.max(1, int(dl.week, 1)),
       streak: int(dl.streak, 0),
     };
     const g = isObj(d.gifts) ? d.gifts : {};
-    this.gifts = { day: str(g.day, ''), activeSec: num(g.activeSec, 0), claimed: intArr(g.claimed), pending: intArr(g.pending) };
+    // Unknown gift indices (a corrupt save, or a shorter GIFTS table) would crash every claim.
+    const giftIdx = (v: unknown) => intArr(v).filter((i) => i < GIFTS.length);
+    this.gifts = {
+      day: typeof g.day === 'string' && DAY_KEY.test(g.day) ? g.day : '',
+      activeSec: num(g.activeSec, 0),
+      claimed: giftIdx(g.claimed),
+      pending: giftIdx(g.pending),
+    };
     const t = isObj(d.tokens) ? d.tokens : {};
     this.tokens = { luckyTide: int(t.luckyTide, 0), boost2xSec: num(t.boost2xSec, 0) };
 
@@ -554,6 +575,7 @@ export class GameState {
     this.hintsSeen = strArr(d.hintsSeen);
     this.featuredWeekSeen = str(d.featuredWeekSeen, '');
     this.buddy = isValidRef(d.buddy) ? { speciesId: d.buddy.speciesId, mutation: d.buddy.mutation } : null;
+    this.offlineFrom = typeof d.offlineFrom === 'number' && Number.isFinite(d.offlineFrom) && d.offlineFrom > 0 ? d.offlineFrom : null;
     return true;
   }
 }

@@ -37,7 +37,8 @@ export function trackSimEvent(state: GameState, e: SimEvent, today: string): str
       break;
     case 'deliver':
       c.deliveries++;
-      c.creaturesDelivered += e.result.placed.length + e.result.sold.length;
+      // Creatures that arrived: placed ones plus those sold because they did not fit (not base creatures they pushed off).
+      c.creaturesDelivered += e.result.placed.length + e.result.sold.filter((s) => !s.displaced).length;
       break;
     case 'surgeEnd':
       state.flags[FLAG_FIRST_SURGE_END] = true;

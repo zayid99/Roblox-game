@@ -43,7 +43,9 @@ export function claimedToday(d: DailySave, today: string): boolean {
 export function dailyClaimable(d: DailySave, today: string, ftueDone: boolean): boolean {
   if (!ftueDone) return false;
   if (d.lastClaimDay === null) return true;
-  return daysBetween(d.lastClaimDay, today) > 0;
+  const n = daysBetween(d.lastClaimDay, today);
+  // A malformed day key (NaN) must not lock the calendar for good.
+  return !Number.isFinite(n) || n > 0;
 }
 
 /**

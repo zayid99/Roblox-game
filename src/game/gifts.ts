@@ -18,7 +18,8 @@ export type GiftState = 'locked' | 'ready' | 'claimed';
 
 export function giftState(g: GiftsSave, i: number): GiftState {
   if (g.claimed.includes(i)) return 'claimed';
-  return g.activeSec >= GIFTS[i].atMin * 60 ? 'ready' : 'locked';
+  const gift = GIFTS[i];
+  return gift && g.activeSec >= gift.atMin * 60 ? 'ready' : 'locked';
 }
 
 /** Indices of gifts that are ready and unclaimed. */

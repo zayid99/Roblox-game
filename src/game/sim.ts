@@ -172,6 +172,21 @@ export class GameSim {
   }
 
   /**
+   * Where the player stands out of the wave's reach: on the home island or up on a lighthouse
+   * (platform or tower top, as for SURVIVED), including small hops there. Null anywhere else.
+   */
+  safeSpot(): 'home' | 'lighthouse' | null {
+    const pl = this.player;
+    const g = pl.groundSolid;
+    if (!g || this.splashTime > 0 || this.seaRespawnTime > 0 || pl.mode === 'swing') return null;
+    const p = pl.pos;
+    if (p.x < g.min.x || p.x > g.max.x || p.z < g.min.z || p.z > g.max.z) return null;
+    if (g.kind === 'home') return p.y >= HOME_TOP - 0.5 ? 'home' : null;
+    if (g.kind === 'platform' || g.kind === 'tower') return p.y >= g.max.y - 0.5 ? 'lighthouse' : null;
+    return null;
+  }
+
+  /**
    * C15 "YOU'RE SAFE": on the home island, above the current crest,
    * or the wave has already passed (or will never reach) the player.
    */
@@ -256,7 +271,7 @@ export class GameSim {
 
   /** After a Big Wave: one creature of rarity min(6, bestZone rarity + 1) on a random island of the best zone. */
   private guaranteeBigWaveCreature(golden: boolean): void {
-    const z = Math.max(0, this.state.bestZone);
+    const z = Math.max(0, Math.min(ZONES.length - 1, this.state.bestZone));
     const rarity = Math.min(RARITIES.length - 1, ZONES[z].rarity + 1);
     const islands = this.course.islands.filter((i) => i.zone === z && i.spawnPoints.length > 0);
     if (!islands.length) return;
