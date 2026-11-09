@@ -7,7 +7,7 @@ import { formatCash, formatIncome } from '../../game/economy';
 // Type-only: a runtime import of game/hatchery from the UI makes the bundler split a shared chunk off.
 import type { BuddyOption, EggView, HatchOutcome, HatcheryView } from '../../game/hatchery';
 import { porthole } from '../art';
-import { deny, el, escapeHtml, pressable, replay, uiSound } from '../dom';
+import { deny, el, escapeHtml, pressable, replay, shake, uiSound } from '../dom';
 import { icon } from '../icons';
 import { RARITY_LETTER, mutationGem, shapeCue } from '../parts/carry';
 import { rarityPill } from '../reveal';
@@ -76,12 +76,27 @@ function oddsHtml(e: EggView): string {
     .join('');
 }
 
+/** Where the hatched creature went (plain text). */
+function outcomeText(out: HatchOutcome): { placed: boolean; where: string } {
+  const placed = out.result.placed.some((c) => c.speciesId === out.ref.speciesId && c.mutation === out.ref.mutation);
+  const soldSelf = out.result.sold.find((s) => s.creature.speciesId === out.ref.speciesId && s.creature.mutation === out.ref.mutation && !placed);
+  const replaced = placed ? out.result.sold[0] : undefined;
+  const where = !placed && soldSelf
+    ? `Base full: sold for ${formatCash(soldSelf.cash)}`
+    : replaced
+      ? `Swapped for your ${getSpecies(replaced.creature.speciesId).name} (+${formatCash(replaced.cash)})`
+      : 'Sent to your base';
+  return { placed, where };
+}
+
 export class HatcheryPanel implements PanelContent {
   tab: PanelTab = 'eggs';
   private stage: HTMLElement | null = null;
   private timers: number[] = [];
   private busy = false;
   private portraitTimer = 0;
+  /** A hatch whose reveal hasn't played yet (the panel can close during the wobble). */
+  private unrevealed: { egg: EggView; out: HatchOutcome } | null = null;
 
   constructor(private readonly shell: PanelShell, private readonly env: PanelEnv, tab: 'eggs' | 'buddy' = 'eggs') {
     this.setTab(tab, false);
@@ -172,7 +187,7 @@ export class HatcheryPanel implements PanelContent {
     }
     const out = this.env.deps.actions.hatchEgg(zone);
     if (!out) {
-      deny(btn);
+      shake(btn); // hatchEgg already played 'ui.denied'
       return;
     }
     uiSound('ui.click');
@@ -182,6 +197,9 @@ export class HatcheryPanel implements PanelContent {
   /** Wobble, crack, pop, then the big reveal card and a result card with HATCH AGAIN. */
   private playHatch(egg: EggView, out: HatchOutcome): void {
     this.busy = true;
+    // Mutated hatches are never pre-warmed: ~2 s of wobble is plenty for the portrait factory.
+    this.env.deps.portraits.request(out.ref);
+    this.unrevealed = { egg, out };
     this.stage?.remove();
     const reduce = this.env.reduce();
     const stage = el('div', 'hx-stage');
@@ -212,6 +230,7 @@ export class HatcheryPanel implements PanelContent {
       this.env.flash('#FFFFFF', 140);
     });
     at(crackAt + 380, () => {
+      this.unrevealed = null;
       const r = getSpecies(out.ref.speciesId).rarity;
       const ix = this.env.deps.data.index();
       const found = ix.entries.filter((x) => x.mask > 0).length;
@@ -233,14 +252,7 @@ export class HatcheryPanel implements PanelContent {
     const sp = getSpecies(out.ref.speciesId);
     const r = sp.rarity;
     const name = out.ref.mutation > 0 ? `${['', 'Gold', 'Diamond', 'Rainbow'][out.ref.mutation]} ${sp.name}` : sp.name;
-    const placed = out.result.placed.some((c) => c.speciesId === out.ref.speciesId && c.mutation === out.ref.mutation);
-    const soldSelf = out.result.sold.find((s) => s.creature.speciesId === out.ref.speciesId && s.creature.mutation === out.ref.mutation && !placed);
-    const replaced = placed ? out.result.sold[0] : undefined;
-    const where = !placed && soldSelf
-      ? `Base full: sold for ${formatCash(soldSelf.cash)}`
-      : replaced
-        ? `Swapped for your ${escapeHtml(getSpecies(replaced.creature.speciesId).name)} (+${formatCash(replaced.cash)})`
-        : 'Sent to your base';
+    const { placed, where } = outcomeText(out);
     const opt = v.options.find((o) => o.ref.speciesId === out.ref.speciesId && o.ref.mutation === out.ref.mutation);
     const canBuddy = placed && opt && !opt.equipped && (!v.buddy || opt.bonus > v.buddy.bonus);
     const again = v.eggs[egg.zone];
@@ -249,8 +261,9 @@ export class HatcheryPanel implements PanelContent {
       `<div class="hx-res" data-r="${r}">` +
       `<div class="hx-res-ph">${this.ph(out.ref, 150)}${out.ref.mutation ? mutationGem(out.ref.mutation, 34) : ''}</div>` +
       `<div class="hx-res-name t-stroke">${escapeHtml(name)}</div>` +
-      `<div class="hx-res-row">${rarityPill(r)}<span class="chip hx-inc">${icon('arrow-up', 14)}+${formatIncome(opt ? opt.income : 0)}</span></div>` +
-      `<div class="hx-res-where">${icon(placed ? 'pedestal' : 'cash', 26)}<span>${where}</span></div>` +
+      // No income chip when the creature was sold (it earns nothing): '+$0/s' next to 'sold for $X' read wrong.
+      `<div class="hx-res-row">${rarityPill(r)}${opt ? `<span class="chip hx-inc">${icon('arrow-up', 14)}+${formatIncome(opt.income)}</span>` : ''}</div>` +
+      `<div class="hx-res-where">${icon(placed ? 'pedestal' : 'cash', 26)}<span>${escapeHtml(where)}</span></div>` +
       `<div class="hx-res-btns"></div></div>`;
     const btns = stage.querySelector('.hx-res-btns') as HTMLElement;
     const ok = el('button', 'btn btn--sky btn--s hx-ok', '<span class="label">DONE</span>');
@@ -265,7 +278,7 @@ export class HatcheryPanel implements PanelContent {
       }
       const o = this.env.deps.actions.hatchEgg(egg.zone);
       if (!o) {
-        deny(more);
+        shake(more);
         return;
       }
       this.clearTimers();
@@ -400,6 +413,14 @@ export class HatcheryPanel implements PanelContent {
   }
 
   destroy(): void {
+    // Closed during the wobble: the egg is paid and the creature placed, so still say what hatched.
+    const u = this.unrevealed;
+    this.unrevealed = null;
+    if (u) {
+      const sp = getSpecies(u.out.ref.speciesId);
+      const name = u.out.ref.mutation > 0 ? `${['', 'Gold', 'Diamond', 'Rainbow'][u.out.ref.mutation]} ${sp.name}` : sp.name;
+      this.env.toast({ text: `Hatched ${name}. ${outcomeText(u.out).where}`, kind: 'good', icon: 'egg' });
+    }
     this.clearTimers();
     window.clearInterval(this.portraitTimer);
     this.stage?.remove();

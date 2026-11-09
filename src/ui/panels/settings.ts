@@ -11,9 +11,32 @@ type View = Settings & { platformMuted: boolean; autoTier: string };
 
 export class SettingsPanel implements PanelContent {
   readonly tab = null;
+  /** Toggles and how to read their live value (M and the platform can change settings while open). */
+  private toggles: { el: HTMLElement; get: (s: View) => boolean }[] = [];
+  private platformMuted = false;
+  private timer = 0;
 
   constructor(private readonly shell: PanelShell, private readonly env: PanelEnv) {
     this.refresh();
+    this.timer = window.setInterval(() => this.sync(), 250);
+  }
+
+  private sync(): void {
+    if (!this.shell.el.isConnected) return;
+    const s = this.env.deps.data.settings() as View;
+    if (s.platformMuted !== this.platformMuted) {
+      const well = this.shell.body.querySelector('.well');
+      const top = well?.scrollTop ?? 0;
+      this.refresh();
+      const w2 = this.shell.body.querySelector('.well');
+      if (w2) w2.scrollTop = top;
+      return;
+    }
+    for (const t of this.toggles) t.el.classList.toggle('on', t.get(s));
+  }
+
+  destroy(): void {
+    window.clearInterval(this.timer);
   }
 
   private set(patch: Partial<Settings>): void {
@@ -22,6 +45,8 @@ export class SettingsPanel implements PanelContent {
 
   refresh(): void {
     const s = this.env.deps.data.settings() as View;
+    this.platformMuted = s.platformMuted;
+    this.toggles = [];
     this.shell.head.innerHTML = '';
     this.shell.body.innerHTML = '';
     const well = el('div', 'well st-well');
@@ -32,20 +57,20 @@ export class SettingsPanel implements PanelContent {
     audio.append(
       this.slider('Music', s.music, 0, 100, (v) => this.set({ music: v }), (v) => `${v}`, s.platformMuted),
       this.slider('Sound', s.sound, 0, 100, (v) => this.set({ sound: v }), (v) => `${v}`, s.platformMuted),
-      this.toggle('Mute all', s.muted, (on) => this.set({ muted: on }), s.platformMuted),
+      this.toggle('Mute all', (v) => v.muted, (on) => this.set({ muted: on }), s.platformMuted),
     );
     const gfx = this.section('GRAPHICS', 'sparkle');
     const tierName = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
     gfx.append(
       this.segmented('Quality', ['auto', 'low', 'medium', 'high'], s.quality, (q) => this.set({ quality: q as QualitySetting }), s.quality === 'auto' ? `Auto (${tierName(s.autoTier)})` : ''),
-      this.toggle('Reduce motion', s.reduceMotion, (on) => this.set({ reduceMotion: on })),
+      this.toggle('Reduce motion', (v) => v.reduceMotion, (on) => this.set({ reduceMotion: on })),
     );
     const ctl = this.section('CONTROLS', 'hand');
     ctl.append(
       this.slider('Camera speed', Math.round(s.camSens * 100), 50, 200, (v) => this.set({ camSens: v / 100 }), (v) => `${v}%`),
-      ...(this.env.touch() ? [] : [this.toggle('Mouse look (click to lock cursor)', s.mouseLook, (on) => this.set({ mouseLook: on }))]),
-      this.toggle('Invert camera Y', s.invertY, (on) => this.set({ invertY: on })),
-      this.toggle('Swing assist', s.swingAssist, (on) => this.set({ swingAssist: on })),
+      ...(this.env.touch() ? [] : [this.toggle('Mouse look (click to lock cursor)', (v) => v.mouseLook, (on) => this.set({ mouseLook: on }))]),
+      this.toggle('Invert camera Y', (v) => v.invertY, (on) => this.set({ invertY: on })),
+      this.toggle('Swing assist', (v) => v.swingAssist, (on) => this.set({ swingAssist: on })),
     );
     const help = this.section('HELP', 'play');
     const replay = el('button', 'btn btn--sky st-replay', `${icon('play', 28)}<span class="label">REPLAY TUTORIAL</span>`);
@@ -53,7 +78,8 @@ export class SettingsPanel implements PanelContent {
       this.env.deps.actions.replayTutorial();
       this.env.closePanel();
     });
-    help.append(replay, el('div', 'st-controls', controlsCardHtml(this.env.touch())));
+    const locker = this.env.deps.data.shop().lockerUnlocked;
+    help.append(replay, el('div', 'st-controls', controlsCardHtml(this.env.touch(), (k) => k !== 'l' || locker)));
     col.append(audio, gfx, ctl, help);
     const foot = el('div', 'st-foot', `${logoSvg(220)}<span class="st-ver">v2.0.0</span>`);
     col.appendChild(foot);
@@ -73,13 +99,15 @@ export class SettingsPanel implements PanelContent {
     return r;
   }
 
-  private toggle(label: string, on: boolean, set: (on: boolean) => void, disabled = false): HTMLElement {
+  private toggle(label: string, get: (s: View) => boolean, set: (on: boolean) => void, disabled = false): HTMLElement {
     const r = this.rowEl(label, disabled);
-    const t = el('button', `toggle${on ? ' on' : ''}`);
+    const t = el('button', `toggle${get(this.env.deps.data.settings() as View) ? ' on' : ''}`);
     t.setAttribute('aria-label', label);
+    this.toggles.push({ el: t, get });
     pressable(t, () => {
       if (disabled) return;
-      on = !on;
+      // Flip the live value, not one captured at render (M may have changed it meanwhile).
+      const on = !get(this.env.deps.data.settings() as View);
       t.classList.toggle('on', on);
       set(on);
     }, { sound: 'ui.tab' });

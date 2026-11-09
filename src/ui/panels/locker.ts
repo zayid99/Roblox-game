@@ -116,6 +116,8 @@ export class LockerTab {
   private raf = 0;
   private confirmId: string | null = null;
   private confirmTimer = 0;
+  /** When BUY? was armed: a confirming tap sooner than 400 ms is the second half of a double-tap. */
+  private confirmAt = 0;
 
   constructor(private readonly env: PanelEnv, well: HTMLElement, _head: HTMLElement) {
     const wrap = el('div', 'locker');
@@ -195,6 +197,7 @@ export class LockerTab {
           return;
         }
         if (this.confirmId === it.id) {
+          if (performance.now() - this.confirmAt < 400) return;
           this.confirmId = null;
           this.env.deps.actions.buyCosmetic(it.id);
           this.selected = it.id;
@@ -202,6 +205,7 @@ export class LockerTab {
           this.refresh();
         } else {
           this.confirmId = it.id;
+          this.confirmAt = performance.now();
           window.clearTimeout(this.confirmTimer);
           this.confirmTimer = window.setTimeout(() => {
             this.confirmId = null;

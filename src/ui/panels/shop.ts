@@ -2,7 +2,7 @@
 import type { HudFocus, PanelTab, ShopRow } from '../../contracts';
 import type { UpgradeKey } from '../../game/economy';
 import { formatCash } from '../../game/economy';
-import { deny, el, escapeHtml, pressable, replay } from '../dom';
+import { deny, el, escapeHtml, pressable, replay, shake } from '../dom';
 import { icon } from '../icons';
 import { maybeCoach } from '../parts/coach';
 import type { PanelEnv } from './env';
@@ -157,7 +157,7 @@ export class UpgradesTab {
     if (row.maxed) return false;
     const ok = this.env.deps.actions.buyUpgrade(key, bulk);
     if (!ok) {
-      deny(r.btn);
+      shake(r.btn); // buyUpgrade already played 'ui.denied'
       return false;
     }
     this.refresh();
@@ -171,6 +171,8 @@ export class ShopPanel implements PanelContent {
   private locker: LockerTab | null = null;
   private rebirth: RebirthTab | null = null;
   private focus: HudFocus | null = null;
+  /** Destroyed: a tab swap still in its 80 ms fade must not build a LockerTab (its RAF loop) afterwards. */
+  private dead = false;
 
   constructor(private readonly shell: PanelShell, private readonly env: PanelEnv, tab: PanelTab = 'upgrades') {
     this.upgrades = new UpgradesTab(env);
@@ -201,9 +203,11 @@ export class ShopPanel implements PanelContent {
     this.shell.setTabs(this.tabs(), tab, (id) => this.setTab(id));
     this.locker?.destroy();
     this.locker = null;
+    this.rebirth?.destroy();
     this.rebirth = null;
     this.shell.head.innerHTML = '';
     this.shell.swapBody((body) => {
+      if (this.dead) return;
       const well = el('div', 'well');
       body.appendChild(well);
       if (tab === 'upgrades') {
@@ -237,7 +241,11 @@ export class ShopPanel implements PanelContent {
   }
 
   destroy(): void {
+    this.dead = true;
     this.locker?.destroy();
+    this.locker = null;
+    this.rebirth?.destroy();
+    this.rebirth = null;
   }
 }
 
