@@ -41,7 +41,7 @@ export function sandboxFrame(name: string, device: Device): TutorialFrame {
       p = prompt('grab', grab.headline, { sub: grab.sub, glyph: touch ? 'thumbDrag' : 'wasd' });
       break;
     case 'grab-fail':
-      p = prompt('fail:hold', COPY.grabFail.headline, { sub: COPY.grabFail.sub, fail: true, glyph: touch ? 'thumbHold' : 'spaceHold' });
+      p = prompt('fail:hold', COPY.grabFail.headline, { sub: (touch ? COPY.grabFail : COPY.grabFailDesktop).sub, fail: true, glyph: touch ? 'thumbHold' : 'spaceHold' });
       break;
     case 'release-wait':
       step = 'release';

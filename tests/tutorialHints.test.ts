@@ -78,6 +78,39 @@ describe('Hints (§7.4)', () => {
     expect(toasts.length).toBe(2);
   });
 
+  it('handsFull queued during a surge is dropped if the wave took the creatures (no stale toast)', () => {
+    const { sim, state, toasts, tick, ctx, hints } = setup();
+    const isl = sim.course.islands[0];
+    sim.player.reset(isl.checkpoint.clone());
+    for (let i = 0; i < 20; i++) sim.step(1 / 120, { moveX: 0, moveZ: 0, jumpHeld: false, jumpPressed: false });
+    state.carried = [{ speciesId: 'toastopus', mutation: 0 }, { speciesId: 'toastopus', mutation: 0 }];
+    state.hintsSeen.push('lockedHook', 'lighthouse', 'goldenNext', 'doubleJump');
+    tick(HINT.handsFullSec + 0.5, { ...ctx, surge: true });
+    expect(toasts.length).toBe(0);
+    state.carried = [];
+    tick(1);
+    expect(toasts.length).toBe(0);
+    expect(hints.homeArrow).toBe(false);
+    // A later real case still hints (the dropped one did not use up the cooldown).
+    state.carried = [{ speciesId: 'toastopus', mutation: 0 }, { speciesId: 'toastopus', mutation: 0 }];
+    tick(HINT.handsFullSec + 0.2);
+    expect(toasts.map((t) => t.text)).toEqual([COPY.hints.handsFull]);
+  });
+
+  it('event hints during the FTUE are neither shown later out of context nor used up', () => {
+    const { sim, toasts, tick, ctx, hints, state } = setup();
+    state.hintsSeen.push('lockedHook', 'lighthouse', 'goldenNext', 'doubleJump');
+    tick(0.1, { ...ctx, ftueStep: 'collect' });
+    hints.onSimEvent({ type: 'bounce', buoyId: 1 }, sim);
+    tick(1, { ...ctx, ftueStep: 'collect' });
+    tick(1);
+    expect(toasts.length).toBe(0);
+    expect(state.hintsSeen).not.toContain('bounce');
+    hints.onSimEvent({ type: 'bounce', buoyId: 1 }, sim);
+    tick(0.1);
+    expect(toasts.map((t) => t.text)).toEqual([COPY.hints.bounce]);
+  });
+
   it('event hints: bounce, chainIntro, firstMutation, baseFull, seaFalls (3 in a row on one gap)', () => {
     const { sim, toasts, tick, hints, state } = setup();
     state.hintsSeen.push('lockedHook', 'lighthouse', 'goldenNext', 'doubleJump');
