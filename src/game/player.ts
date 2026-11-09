@@ -363,6 +363,10 @@ export class PlayerSim {
     this.ropeLength = Math.max(PHYS.ropeMin, dist);
     this.ropeGoal = Math.max(PHYS.ropeMin, dist * PHYS.reelFraction);
     this.canDoubleJump = true;
+    // The press (if any) was spent on the grab, and coyote time ends: no buffered jump on a landing
+    // while still attached, and no ground jump right after letting go.
+    this.jumpBuffer = 0;
+    this.coyote = 0;
     this.events.push('grab');
   }
 
@@ -515,6 +519,7 @@ export class PlayerSim {
       );
       this.mode = 'launch';
       this.launchTime = t;
+      this.coyote = 0;
       this.padId = pad.id;
       this.events.push('pad');
       return;
@@ -578,6 +583,7 @@ export class PlayerSim {
       this.vel.y = GEYSER_LAUNCH.vel;
       this.mode = 'launch';
       this.launchTime = GEYSER_LAUNCH.time;
+      this.coyote = 0;
       this.geyserLaunched = g.id;
       return;
     }

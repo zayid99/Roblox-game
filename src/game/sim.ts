@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, SEA_RESPAWN_DELAY } from './config';
+import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, PHYS, SEA_RESPAWN_DELAY } from './config';
 import { ComboTracker } from './combo';
 import { anchorPosAt, CRUMBLE, generateCourse, geyserStateAt, zoneAtZ, type Anchor, type Course, type GeyserState, type Island, type Pad, type Stone } from './course';
 import { playerOverlaps } from './physics';
@@ -58,6 +58,9 @@ export class GameSim {
   /** Sim time each crumble stone started to crumble (absent = solid). */
   private readonly crumbleStart = new Map<number, number>();
   private readonly stoneBySolid = new Map<number, Stone>();
+  private readonly stoneById = new Map<number, Stone>();
+  /** Scratch list for the 'washed' event (reused every step of a surge). */
+  private readonly washed: number[] = [];
   private nextUid = 1;
   private carryFullCooldown = 0;
   private inShopZone = false;
@@ -73,7 +76,10 @@ export class GameSim {
     for (const island of this.course.islands) this.islandBySolid.set(island.solid.id, island);
     for (const pad of this.course.pads) this.padById.set(pad.id, pad);
     this.drifting = this.course.anchors.filter((a) => a.drift || a.sway);
-    for (const st of this.course.stones) this.stoneBySolid.set(st.solid.id, st);
+    for (const st of this.course.stones) {
+      this.stoneBySolid.set(st.solid.id, st);
+      this.stoneById.set(st.id, st);
+    }
     this.player.reset(this.course.homeSpawn);
     this.respawnCreatures(false);
   }
@@ -149,7 +155,7 @@ export class GameSim {
     if (this.crumbleStart.size === 0) return;
     const p = this.player.pos;
     for (const [id, start] of this.crumbleStart) {
-      const st = this.course.stones.find((x) => x.id === id);
+      const st = this.stoneById.get(id);
       if (!st) continue;
       const t = this.time - start;
       if (t >= CRUMBLE.shake && !st.solid.off && t < CRUMBLE.shake + CRUMBLE.sunk + CRUMBLE.rise) {
@@ -180,7 +186,9 @@ export class GameSim {
     const g = pl.groundSolid;
     if (!g || this.splashTime > 0 || this.seaRespawnTime > 0 || pl.mode === 'swing') return null;
     const p = pl.pos;
-    if (p.x < g.min.x || p.x > g.max.x || p.z < g.min.z || p.z > g.max.z) return null;
+    // Standing on it means the body overlaps its top (the feet centre can be just past an edge).
+    const hw = PHYS.halfWidth;
+    if (p.x + hw <= g.min.x || p.x - hw >= g.max.x || p.z + hw <= g.min.z || p.z - hw >= g.max.z) return null;
     if (g.kind === 'home') return p.y >= HOME_TOP - 0.5 ? 'home' : null;
     if (g.kind === 'platform' || g.kind === 'tower') return p.y >= g.max.y - 0.5 ? 'lighthouse' : null;
     return null;
@@ -191,7 +199,7 @@ export class GameSim {
    * or the wave has already passed (or will never reach) the player.
    */
   playerSafe(): boolean {
-    if (this.isOnHome()) return true;
+    if (this.isOnHome() || this.homeShelters()) return true;
     if (this.player.pos.y >= this.wave.crest) return true;
     return !Number.isFinite(this.wave.timeUntilReaches(this.player.pos.z));
   }
@@ -210,7 +218,11 @@ export class GameSim {
       this.updateSplash(dt);
     } else if (this.seaRespawnTime > 0) {
       this.seaRespawnTime -= dt;
-      if (this.seaRespawnTime <= 0) {
+      if (this.seaCaughtByWave()) {
+        // In the water when the wall comes through: the wave takes you (no escaping it by falling in).
+        this.seaRespawnTime = 0;
+        this.splashPlayer();
+      } else if (this.seaRespawnTime <= 0) {
         this.seaRespawnTime = 0;
         this.respawnAt(this.checkpoint, 'sea');
       }
@@ -246,27 +258,33 @@ export class GameSim {
       }
     }
     if (this.wave.phase === 'surge') {
+      // Compact in place: this runs every step of a surge, so no new arrays.
       const front = this.wave.frontZ;
-      const washed: number[] = [];
-      this.wild = this.wild.filter((c) => {
-        if (c.pos.z < front) {
-          washed.push(c.uid);
-          return false;
-        }
-        return true;
-      });
-      if (washed.length) this.events.push({ type: 'washed', uids: washed });
+      const wild = this.wild;
+      let n = 0;
+      for (const c of wild) {
+        if (c.pos.z < front) this.washed.push(c.uid);
+        else wild[n++] = c;
+      }
+      if (n < wild.length) {
+        wild.length = n;
+        this.events.push({ type: 'washed', uids: this.washed.slice() });
+        this.washed.length = 0;
+      }
     }
   }
 
-  /** §9.8: not splashed this surge, and on the home island or a lighthouse platform/tower top. */
+  /** §9.8: not splashed this surge, and on the home island or a lighthouse platform/tower top (as safeSpot). */
   private survivedSurge(): boolean {
-    if (this.splashedThisSurge || this.splashTime > 0 || this.seaRespawnTime > 0) return false;
-    const g = this.player.groundSolid;
-    if (!g) return false;
-    if (g.kind === 'home') return this.player.pos.y >= HOME_TOP - 0.5;
-    if (g.kind === 'platform' || g.kind === 'tower') return this.player.pos.y >= g.max.y - 0.5;
-    return false;
+    return !this.splashedThisSurge && this.safeSpot() !== null;
+  }
+
+  /**
+   * The home island shelters a player standing on (or hopping on) it, including its front lip: the feet can be
+   * a little past HOME_FRONT_Z while the body still stands on home, where WaveSim.hits() alone would splash them.
+   */
+  private homeShelters(): boolean {
+    return this.safeSpot() === 'home';
   }
 
   /** After a Big Wave: one creature of rarity min(6, bestZone rarity + 1) on a random island of the best zone. */
@@ -367,18 +385,37 @@ export class GameSim {
     if (inShop && !this.inShopZone) this.events.push({ type: 'shopZone' });
     this.inShopZone = inShop;
 
-    if (this.wave.hits(player.pos.y, player.pos.z)) {
-      this.splashTime = SPLASH_TIME;
-      this.splashedThisSurge = true;
-      player.anchor = null;
-      player.mode = 'air';
-      player.vel.set(0, 0, 0);
-      const practice = this.overrides.practiceWave;
-      // Practice wave: the creatures float off and snap back; `lost` lists them but they are kept.
-      const lost = practice ? this.state.carried.map((c) => ({ ...c })) : this.state.loseCarried();
-      this.endChain('splash');
-      this.events.push({ type: 'splash', lost, practice });
-    }
+    if (!this.homeShelters() && this.wave.hits(player.pos.y, player.pos.z)) this.splashPlayer();
+  }
+
+  /** The wave catches the player: tumble for SPLASH_TIME, then respawn at home. */
+  private splashPlayer(): void {
+    const player = this.player;
+    this.splashTime = SPLASH_TIME;
+    this.splashedThisSurge = true;
+    player.anchor = null;
+    player.mode = 'air';
+    player.vel.set(0, 0, 0);
+    const practice = this.overrides.practiceWave;
+    // Practice wave: the creatures float off and snap back; `lost` lists them but they are kept.
+    const lost = practice ? this.state.carried.map((c) => ({ ...c })) : this.state.loseCarried();
+    this.endChain('splash');
+    this.events.push({ type: 'splash', lost, practice });
+  }
+
+  /**
+   * During the sea-fall beat: the wall reaches the spot where the player fell in, or the respawn would put them
+   * on a checkpoint the wall has already swept while their fall spot is still ahead of it (falling into the sea
+   * right in front of the wave must not carry them through it with their creatures).
+   */
+  private seaCaughtByWave(): boolean {
+    const w = this.wave;
+    if (w.phase !== 'surge') return false;
+    const p = this.player.pos;
+    if (w.hits(p.y, p.z)) return true;
+    if (this.seaRespawnTime > 0) return false;
+    const cp = this.checkpoint;
+    return cp.z <= HOME_FRONT_Z && cp.z <= w.frontZ && p.z > w.frontZ && p.z <= HOME_FRONT_Z;
   }
 
   /** Rates the release the player just made (recorded before the boost) and applies the Perfect boost. */
