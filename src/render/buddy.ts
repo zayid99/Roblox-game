@@ -116,6 +116,7 @@ export class Buddy {
 
   private setCreature(ref: CreatureRef | null, key: string): void {
     this.key = key;
+    const wasShown = !!this.body && this.root.visible;
     if (this.body) {
       this.root.remove(this.body);
       this.body.material.dispose();
@@ -125,7 +126,12 @@ export class Buddy {
       this.root.remove(this.outline);
       this.outline = null;
     }
-    if (!ref) return;
+    if (!ref) {
+      // Unequipped (sold, replaced, unset): poof where it was, and pop in fresh next time.
+      if (wasShown && this.placed) this.poof(this.pos);
+      this.placed = false;
+      return;
+    }
     const scale = speciesScale(ref.speciesId) * SIZE;
     this.body = makeCreatureMesh(ref);
     this.body.scale.setScalar(scale);

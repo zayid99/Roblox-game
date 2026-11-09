@@ -79,6 +79,19 @@ export class Ribbon {
     }
     this.mesh.visible = this.fade > 0.001 && this.count > 2;
     if (!this.mesh.visible) return;
+    // Whole-trail check: when the trail runs along the view (the camera chasing the swing) it only reads as a
+    // white bar under the player, so it fades out; side-on it shows in full.
+    const newest = this.samples[(this.head - 1 + N) % N];
+    const oldest = this.samples[(this.head - this.count + N * 2) % N];
+    tangent.copy(newest).sub(oldest);
+    view.copy(camPos).sub(newest);
+    const chord = tangent.length();
+    const endOn = chord > 0.5 ? Math.abs(tangent.dot(view)) / (chord * Math.max(1e-4, view.length())) : 0;
+    const sideOn = Math.min(1, Math.max(0, (0.8 - endOn) / 0.2));
+    if (sideOn <= 0) {
+      this.mesh.visible = false;
+      return;
+    }
     // Newest sample first (index 0 = the feet).
     for (let i = 0; i < N; i++) {
       const k = Math.min(i, this.count - 1);
@@ -95,7 +108,12 @@ export class Ribbon {
       tmp.toArray(this.pos, i * 6);
       tmp.copy(s).addScaledVector(side, -w);
       tmp.toArray(this.pos, i * 6 + 3);
-      const a = 0.7 * (1 - t) * this.fade * (i < this.count ? 1 : 0);
+      // Seen end-on (the camera chasing the swing) the strip collapses into a flat white bar running down the
+      // screen: fade where it points at the camera, and right in front of the lens.
+      const camDist = view.length();
+      const along = Math.abs(tangent.normalize().dot(view.divideScalar(Math.max(1e-4, camDist))));
+      const facing = Math.min(1, Math.max(0, (0.93 - along) / 0.25)) * Math.min(1, Math.max(0, (camDist - 4) / 4));
+      const a = 0.7 * (1 - t) * this.fade * facing * sideOn * (i < this.count ? 1 : 0);
       this.alpha[i * 2] = a;
       this.alpha[i * 2 + 1] = a;
     }

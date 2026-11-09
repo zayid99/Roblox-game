@@ -337,7 +337,8 @@ export class World {
     const matX0 = -13.2;
     const matX1 = 13.2;
     const matZ0 = HOME_FRONT_Z + 10.6;
-    const matZ1 = HOME_FRONT_Z + 29.2;
+    // Whole tiles only: 8 rows of 2.2 m (the 9th used to overhang the back fence and the island edge).
+    const matZ1 = matZ0 + 8 * 2.2;
     for (let x = matX0; x < matX1 - 0.01; x += 2.2) {
       for (let z = matZ0; z < matZ1 - 0.01; z += 2.2) {
         const odd = (Math.round((x - matX0) / 2.2) + Math.round((z - matZ0) / 2.2)) % 2;
@@ -345,8 +346,8 @@ export class World {
       }
     }
     for (let x = matX0; x <= matX1 + 0.01; x += 2.2) {
-      if (Math.abs(x) < 2.5) continue;
-      decor.box(x, HOME_TOP + 0.35, matZ0 - 0.3, 0.22, 0.7, 0.22, '#B07A3A', { ao: HOME_TOP });
+      // The front rail has a gap for the path; the back rail is continuous, so it keeps every post.
+      if (Math.abs(x) >= 2.5) decor.box(x, HOME_TOP + 0.35, matZ0 - 0.3, 0.22, 0.7, 0.22, '#B07A3A', { ao: HOME_TOP });
       decor.box(x, HOME_TOP + 0.35, matZ1 + 0.3, 0.22, 0.7, 0.22, '#B07A3A', { ao: HOME_TOP });
     }
     for (let z = matZ0; z <= matZ1 + 0.01; z += 2.2) {
@@ -384,12 +385,15 @@ export class World {
       awning.makeRotationX(-0.32).setPosition(shopX - 2.45 + 0.35 + i * 0.6, HOME_TOP + 3.25, shopZ - 0.25);
       decor.box(0, 0, 0, 0.6, 0.12, 2.6, i % 2 ? '#FFFFFF' : '#FF4D5E', { matrix: awning });
     }
-    signs.board(new Matrix4().makeTranslation(shopX, HOME_TOP + 4.2, shopZ - 0.6), 3.2, 1.28, [{ text: 'SHOP', size: 88, color: '#FFFFFF' }], '#C2203A');
+    // The board rides on two short posts above the awning, high enough to clear the Hatchery board (now drawn from
+    // behind too) in the spawn view.
+    for (const dx of [-1.2, 1.2]) decor.box(shopX + dx, HOME_TOP + 4.05, shopZ - 0.6, 0.16, 1.1, 0.16, '#8A5A28');
+    signs.board(new Matrix4().makeTranslation(shopX, HOME_TOP + 5.2, shopZ - 0.6), 3.2, 1.28, [{ text: 'SHOP', size: 88, color: '#FFFFFF' }], '#C2203A');
     this.group.add(hatcheryStand(decor, signs));
     const ag = upgradeArrowGeometry();
     this.arrow = new Group();
     this.arrow.add(new Mesh(ag.body, toonVertexMaterial), new Mesh(ag.hull, inkMaterial));
-    this.arrow.position.set(shopX, HOME_TOP + 5.6, shopZ - 0.6);
+    this.arrow.position.set(shopX, HOME_TOP + 6.6, shopZ - 0.6);
     this.arrow.visible = false;
     this.group.add(this.arrow);
 
@@ -419,8 +423,10 @@ export class World {
       const sx = s.max.x - 1.2 > 0 ? s.max.x - 0.6 : s.min.x + 0.6;
       const bx = sx + (sx > 0 ? 2.6 : -2.6);
       signs.board(new Matrix4().makeTranslation(bx, s.max.y + 3.6, s.max.z - 0.6), 6.5, 2.6, lines);
-      decor.box(sx, s.max.y + 1.4, s.max.z - 0.6, 0.25, 2.8, 0.25, '#8A5A28', { ao: s.max.y });
-      decor.box(bx, s.max.y + 2.15, s.max.z - 0.6, 3.6, 0.2, 0.2, '#8A5A28');
+      // Post up to the arm, and the arm from the post to under the board (it used to float beside the post).
+      decor.box(sx, s.max.y + 1.15, s.max.z - 0.6, 0.25, 2.3, 0.25, '#8A5A28', { ao: s.max.y });
+      const ax = sx + Math.sign(bx - sx) * 1.75;
+      decor.box(ax, s.max.y + 2.2, s.max.z - 0.6, 3.75, 0.2, 0.2, '#8A5A28');
     }
 
     // End of the course.
@@ -506,7 +512,8 @@ export class World {
 
     // Rotating beams.
     this.beamMat = beamMaterial();
-    const cone = new CylinderGeometry(3.2, 0.25, 30, 10, 1, true).rotateZ(Math.PI / 2).translate(15, 0, 0);
+    // Narrow at the lantern (x = 0), 6.4 m wide 30 m out.
+    const cone = new CylinderGeometry(3.2, 0.25, 30, 10, 1, true).rotateZ(-Math.PI / 2).translate(15, 0, 0);
     this.beams = new InstancedMesh(cone, this.beamMat, Math.max(1, this.lanterns.length));
     this.beams.count = this.lanterns.length;
     this.beams.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -545,12 +552,12 @@ export class World {
     // Merge and add the static meshes.
     const terrainMesh = new Mesh(terrain.build(), islandMaterial(opts.edgeLines));
     terrainMesh.receiveShadow = true;
-    const decorMesh = new Mesh(decor.build(), islandMaterial(opts.edgeLines));
+    const decorMesh = new Mesh(decor.build(), islandMaterial(opts.edgeLines, true));
     decorMesh.castShadow = true;
     decorMesh.receiveShadow = true;
     const palmGeo = palms.build();
     palmGeo.setAttribute('aSway', new Float32BufferAttribute(sway, 3));
-    const palmMat = islandMaterial(opts.edgeLines);
+    const palmMat = islandMaterial(opts.edgeLines, true);
     const islandCompile = palmMat.onBeforeCompile;
     palmMat.onBeforeCompile = (s, r) => {
       islandCompile.call(palmMat, s, r);
@@ -562,7 +569,16 @@ export class World {
     palmMesh.receiveShadow = true;
     this.group.add(terrainMesh, decorMesh, palmMesh, signs.build());
 
-    this.plaqueMat = new MeshBasicMaterial({ map: lockPlaqueTexture(), toneMapped: false });
+    // alphaTest keeps it in the opaque pass with see-through rounded corners (opaque alone drew them black).
+    this.plaqueMat = new MeshBasicMaterial({ map: lockPlaqueTexture(), toneMapped: false, alphaTest: 0.5, side: DoubleSide });
+  }
+
+  /** Frees the textures that live outside the scene graph (cached reach chips) and the plaque material. */
+  dispose(): void {
+    for (const t of this.chipTex.values()) t.dispose();
+    this.chipTex.clear();
+    this.plaqueMat.map?.dispose();
+    this.plaqueMat.dispose();
   }
 
   private nearLighthouse(isl: Island, x: number, z: number): boolean {
@@ -571,7 +587,10 @@ export class World {
       || (this.course.springs ?? []).some((p) => Math.hypot(p.pos.x - x, p.pos.z - z) < 2.4);
   }
 
-  /** G8 two-tier podiums; locked ones carry a lock plaque. Rebuilt only when the count changes. */
+  /**
+   * G8 two-tier podiums. Locked ones are plain slate; only the next one to buy carries a lock plaque (a field of
+   * plaques made the base busy). Rebuilt only when the count changes.
+   */
   setPedestalCount(count: number): void {
     if (count === this.lastCount) return;
     this.lastCount = count;
@@ -591,7 +610,7 @@ export class World {
       b.box(p.x, p.y + 0.12, p.z, 2.4, 0.24, 2.4, '#ECE5D6', { sideColor: '#C9BFA8', ao: p.y });
       b.box(p.x, p.y + 0.3, p.z, 2.06, 0.06, 2.06, open ? '#FFC92E' : '#8D96A3');
       b.box(p.x, p.y + 0.34, p.z, 2.0, 0.12, 2.0, open ? '#38C6D9' : '#9AA3AD', { sideColor: open ? '#2A9DB0' : '#7D8794' });
-      if (!open) {
+      if (i === count) {
         for (const [sz, flip] of [[-1, 0], [1, 1]]) {
           const z = p.z + sz * 0.02;
           const y0 = p.y + 0.42;
@@ -621,7 +640,6 @@ export class World {
       g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
       g.computeBoundingSphere();
       this.plaqueMesh = new Mesh(g, this.plaqueMat);
-      this.plaqueMat.side = DoubleSide;
       this.group.add(this.plaqueMesh);
     } else this.plaqueMesh = null;
   }
@@ -735,7 +753,7 @@ export class World {
     // Upgrade arrow over the shop stall.
     this.arrow.visible = f.shopArrow;
     if (f.shopArrow) {
-      this.arrow.position.y = HOME_TOP + 5.6 + Math.sin(t * Math.PI * 2 * 1.2) * 0.2;
+      this.arrow.position.y = HOME_TOP + 6.6 + Math.sin(t * Math.PI * 2 * 1.2) * 0.2;
       this.arrow.rotation.y = t * 1.5;
     }
   }

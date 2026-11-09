@@ -8,6 +8,7 @@ import {
   NearestFilter,
   RedFormat,
   SRGBColorSpace,
+  Vector4,
   type WebGLProgramParametersWithUniforms,
 } from 'three';
 
@@ -38,11 +39,43 @@ export const sharedTime = { value: 0 };
 
 // ---------- Islands: Lambert + G7 edge lines + grass checker ----------
 
-/** Terrain material. With `edgeLines` the geometry must carry the `aFace` attribute (BoxBuilder `faces: true`). */
-export function islandMaterial(edgeLines: boolean): MeshLambertMaterial {
+/**
+ * Where the player is on screen, for the see-through dither of decor and palms: (x, y) in drawing-buffer pixels
+ * (gl_FragCoord space), view depth, radius in pixels (0 = off). Set once per frame by the renderer.
+ */
+export const seeThrough = { value: new Vector4(0, 0, 0, 0) };
+
+/**
+ * Terrain material. With `edgeLines` the geometry must carry the `aFace` attribute (BoxBuilder `faces: true`).
+ * With `see` (decor, palms) fragments in front of the player inside a circle around them are screen-door
+ * dithered, so a palm, a post or a fence between the camera and the player never hides them.
+ */
+export function islandMaterial(edgeLines: boolean, see = false): MeshLambertMaterial {
   const m = new MeshLambertMaterial({ vertexColors: true });
-  if (edgeLines) m.defines = { EDGE_LINES: '' };
+  m.defines = {};
+  if (edgeLines) m.defines.EDGE_LINES = '';
+  if (see) m.defines.SEE_THROUGH = '';
   m.onBeforeCompile = (s: WebGLProgramParametersWithUniforms) => {
+    s.uniforms.uSeeThrough = seeThrough;
+    s.fragmentShader = s.fragmentShader
+      .replace('#include <common>', '#include <common>\n#ifdef SEE_THROUGH\nuniform vec4 uSeeThrough;\n#endif')
+      .replace(
+        '#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>
+        #ifdef SEE_THROUGH
+        {
+          // Right in front of the lens (a fence rail or sign arm the orbit camera backs into): fade out.
+          float k = 1.0 - smoothstep(2.0, 4.5, vViewPosition.z);
+          if (uSeeThrough.w > 0.0 && vViewPosition.z < uSeeThrough.z - 1.0) {
+            float dd = length(gl_FragCoord.xy - uSeeThrough.xy) / uSeeThrough.w;
+            k = max(k, (1.0 - smoothstep(0.65, 1.0, dd)) * 0.75);
+          }
+          // 2×2 ordered dither: up to 3 of 4 pixels dropped around the player, all of them at the lens.
+          float th = fract(dot(floor(gl_FragCoord.xy), vec2(0.5, 0.25)));
+          if (th < k) discard;
+        }
+        #endif`,
+      );
     s.vertexShader = s.vertexShader
       .replace(
         '#include <common>',

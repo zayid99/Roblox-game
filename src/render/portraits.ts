@@ -1,8 +1,11 @@
-import { AmbientLight, DirectionalLight, HemisphereLight, PerspectiveCamera, Scene, WebGLRenderTarget, type WebGLRenderer } from 'three';
-import { getSpecies, type CreatureRef } from '../game/creatures';
-import { makeCreatureMesh } from './creatureMesh';
+import { AmbientLight, Box3, DirectionalLight, HemisphereLight, Matrix4, Mesh, PerspectiveCamera, Scene, Vector3, WebGLRenderTarget, type WebGLRenderer } from 'three';
+import type { CreatureRef } from '../game/creatures';
+import { creatureGeometry } from './creatureMesh';
+import { creatureMaterial, type CreatureMaterial } from './materials';
 
 const SIZE = 128;
+/** Three-quarter turn of the model toward the camera. */
+const MODEL_YAW = 0.55;
 
 function toSrgb(v: number): number {
   const c = v / 255;
@@ -27,6 +30,8 @@ export class PortraitFactory {
   private target: WebGLRenderTarget | null = null;
   private readonly pixels = new Uint8Array(SIZE * SIZE * 4);
   private canvas: HTMLCanvasElement | null = null;
+  private readonly mats: CreatureMaterial[] = [];
+  private readonly framing = new Map<string, { pos: Vector3; at: Vector3 }>();
 
   constructor(private readonly renderer: WebGLRenderer) {}
 
@@ -71,19 +76,47 @@ export class PortraitFactory {
     this.canvas.height = SIZE;
   }
 
+  /**
+   * Camera placement that fits the species' rotated model inside the porthole (U13-08: a fixed camera cut
+   * crab claws and party hats). Looks slightly down at the model's centre, distance from its projected extent.
+   */
+  private frame(speciesId: string): { pos: Vector3; at: Vector3 } {
+    let f = this.framing.get(speciesId);
+    if (f) return f;
+    const pos = creatureGeometry(speciesId).getAttribute('position');
+    const rot = new Matrix4().makeRotationY(MODEL_YAW);
+    const pts: Vector3[] = [];
+    for (let i = 0; i < pos.count; i++) pts.push(new Vector3().fromBufferAttribute(pos, i).applyMatrix4(rot));
+    const center = new Box3().setFromPoints(pts).getCenter(new Vector3());
+    const dir = new Vector3(0, 0.16, 1).normalize();
+    const right = new Vector3(1, 0, 0);
+    const up = new Vector3().crossVectors(dir, right).normalize();
+    const t = Math.tan((this.camera.fov * Math.PI) / 360);
+    // Every vertex inside 90% of the porthole circle (radius ≈ 1 in NDC).
+    const fill = 0.9;
+    let dist = 0;
+    const o = new Vector3();
+    for (const p of pts) {
+      o.copy(p).sub(center);
+      dist = Math.max(dist, Math.hypot(o.dot(right), o.dot(up)) / (fill * t) + o.dot(dir));
+    }
+    f = { pos: center.clone().addScaledVector(dir, dist), at: center };
+    this.framing.set(speciesId, f);
+    return f;
+  }
+
   private render(c: CreatureRef): string {
     if (!this.scene) this.setup();
     const scene = this.scene!;
     const target = this.target!;
-    const mesh = makeCreatureMesh(c);
-    mesh.scale.setScalar(1);
-    mesh.rotation.y = 0.55;
+    // One material per mutation, kept for the session: the portrait program compiles once.
+    const mat = (this.mats[c.mutation] ??= creatureMaterial(c.mutation));
+    const mesh = new Mesh(creatureGeometry(c.speciesId), mat);
+    mesh.rotation.y = MODEL_YAW;
     scene.add(mesh);
-    const look = getSpecies(c.speciesId).look;
-    const tall = look.plan === 'jelly' || look.plan === 'octo' || look.plan === 'star';
-    const long = look.plan === 'whale';
-    this.camera.position.set(0, tall ? 1.4 : 1.1, long ? 4.6 : 3.9);
-    this.camera.lookAt(0, tall ? 0.8 : 0.5, 0);
+    const f = this.frame(c.speciesId);
+    this.camera.position.copy(f.pos);
+    this.camera.lookAt(f.at);
 
     const r = this.renderer;
     const prevTarget = r.getRenderTarget();
@@ -97,7 +130,6 @@ export class PortraitFactory {
     r.setRenderTarget(prevTarget);
     r.shadowMap.autoUpdate = prevShadow;
     scene.remove(mesh);
-    mesh.material.dispose();
 
     const ctx = this.canvas!.getContext('2d')!;
     const img = ctx.createImageData(SIZE, SIZE);

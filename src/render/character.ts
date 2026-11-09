@@ -307,11 +307,11 @@ export class Character {
     v[o + AR_X] = legs * 1.0 * carryAmp;
     v[o + AL_Z] = -0.1;
     v[o + AR_Z] = 0.1;
-    o = CH * 2; // swing
-    v[o + AL_X] = -(Math.PI - 0.15);
-    v[o + AR_X] = -(Math.PI - 0.15);
-    v[o + AL_Z] = 0.12;
-    v[o + AR_Z] = -0.12;
+    o = CH * 2; // swing: both arms straight up, hands together over the cap gripping the rope (arms stretch below)
+    v[o + AL_X] = -(Math.PI - 0.08);
+    v[o + AR_X] = -(Math.PI - 0.08);
+    v[o + AL_Z] = 0.24;
+    v[o + AR_Z] = -0.24;
     const apex = speed < 4 ? 1 - speed / 4 : 0;
     const down = sim.vel.y < -2 ? Math.min(1, -sim.vel.y / 10) : 0;
     v[o + LL_X] = -0.6 * apex + 0.5 * down - 0.15;
@@ -401,6 +401,12 @@ export class Character {
     bn[B_HEAD].rotation.set(out[HEAD_PITCH], out[HEAD_YAW], 0, 'YXZ');
     bn[B_ARM_L].rotation.set(out[AL_X], 0, out[AL_Z]);
     bn[B_ARM_R].rotation.set(out[AR_X], 0, out[AR_Z]);
+    // Toon stretch on the rope: the arms reach 1.5× so the hands (and the rope) sit above the cap, where the
+    // camera behind the player can see the grip. Without it the hands stop at ear height and the rope seems
+    // to come out of the head.
+    const stretch = 1 + 0.5 * this.weights[2];
+    bn[B_ARM_L].scale.set(1, stretch, 1);
+    bn[B_ARM_R].scale.set(1, stretch, 1);
     bn[B_LEG_L].rotation.set(out[LL_X], 0, 0);
     bn[B_LEG_R].rotation.set(out[LR_X], 0, 0);
 

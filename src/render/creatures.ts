@@ -5,6 +5,7 @@ import {
   CylinderGeometry,
   DoubleSide,
   DynamicDrawUsage,
+  Euler,
   Group,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -27,7 +28,7 @@ import { creatureIncome, getSpecies, RARITIES, type CreatureRef } from '../game/
 import { formatIncome } from '../game/economy';
 import type { BlobShadows } from './blobShadows';
 import { PedestalLabels, wildBillboard } from './billboards';
-import { creatureOutline, makeCreatureMesh, speciesScale } from './creatureMesh';
+import { creatureOutline, makeCreatureMesh, speciesHeight, speciesScale } from './creatureMesh';
 import { clamp, easeBack, easeInOut, easeOut } from './juice';
 import { inkMaterial, sharedTime, type CreatureMaterial } from './materials';
 import type { Particles } from './particles';
@@ -74,7 +75,7 @@ interface Signature {
 const SIGNATURES: Record<string, Signature> = {
   toastopus: { ms: 700, fn: (k, p) => {
     if (k < 0.3) { p.y = -0.25 * easeInOut(k / 0.3); squashY(p, 0.85); }
-    else { const u = (k - 0.3) / 0.7; p.y = -0.25 + 0.85 * Math.sin(Math.PI * u); p.ry = TAU * easeOut(u); squashY(p, 1 + 0.12 * Math.sin(Math.PI * u)); }
+    else { const u = (k - 0.3) / 0.7; p.y = -0.25 * (1 - u) + 0.85 * Math.sin(Math.PI * u); p.ry = TAU * easeOut(u); squashY(p, 1 + 0.12 * Math.sin(Math.PI * u)); }
   } },
   pickle_puff: { ms: 600, fn: (k, p) => {
     const s = k < 0.6 ? 1 + 0.25 * Math.sin((Math.PI / 2) * (k / 0.6)) : 1 + 0.25 * (1 - (k - 0.6) / 0.4) + 0.06 * Math.sin((k - 0.6) * 60) * (1 - k) / 0.4;
@@ -212,14 +213,18 @@ function animate(a: Anim, base: Vector3, t: number, dt: number, reduceMotion: bo
   a.body.rotation.set(pose.rx, yaw, pose.rz, 'YXZ');
   a.body.scale.set(a.scale * pose.sx, a.scale * pose.sy, a.scale * pose.sz);
   if (pose.opacity < 1 || a.body.material.transparent) {
-    a.body.material.transparent = true;
-    a.body.material.opacity = pose.opacity;
+    const m = a.body.material;
+    // Switching to transparent needs a new program (the opaque one forces alpha to 1).
+    if (!m.transparent) m.needsUpdate = true;
+    m.transparent = true;
+    m.opacity = pose.opacity;
   }
 }
 
-function startSignature(a: Anim, t: number): void {
+/** Tap on a pedestal: the signature idle, or the plain hop with Reduce motion (§5.2b). */
+function startSignature(a: Anim, t: number, reduceMotion: boolean): void {
   a.idleStart = t;
-  a.idleSig = true;
+  a.idleSig = !reduceMotion;
 }
 
 // ---------- Shared instanced FX: glow discs, rare beams, legendary rings ----------
@@ -295,7 +300,19 @@ function beamMaterial(): ShaderMaterial {
   });
 }
 
+/** A delivered creature's hop from the head stack onto its pedestal (staggered by duration, never frozen). */
+interface Fly {
+  from: Vector3;
+  t: number;
+  dur: number;
+  /** Carried scale and yaw at the hand-off, eased into the pedestal ones. */
+  s0: number;
+  yaw0: number;
+}
+const tmpE = new Euler();
+
 const rarityColors = RARITIES.map((r) => new Color(r.color));
+const RAINBOW = ['#FF5A5F', '#FFC92E', '#59D36A', '#3AA8FF', '#B065FF'];
 
 export interface CreatureFrame {
   time: number;
@@ -330,10 +347,16 @@ export class CreatureVisuals {
   private readonly accel = new Vector3();
 
   // Base.
-  private readonly base: ({ key: string; ref: CreatureRef; a: Anim; fly: { from: Vector3; t: number; delay: number } | null; pulse: number } | null)[] = [];
+  private readonly base: ({ key: string; ref: CreatureRef; a: Anim; fly: Fly | null; pulse: number } | null)[] = [];
   readonly labels = new PedestalLabels();
   private labelMult = -1;
   private coinTimer = 0;
+  private sparkleT = 0;
+  private tapped = -1;
+  private tappedUntil = 0;
+  private practiceT = -1;
+  private practicePop = -1;
+  private readonly coinSlots = new Uint8Array(MAX_PEDESTALS);
 
   constructor(
     private readonly course: Course,
@@ -384,10 +407,18 @@ export class CreatureVisuals {
     this.deliverPending = true;
   }
 
-  /** Play a pedestal creature's signature idle (tap). */
-  tapPedestal(i: number, t: number): void {
+  /** Play a pedestal creature's signature idle (tap). Its label opens in full for a few seconds. */
+  tapPedestal(i: number, t: number, reduceMotion = false): void {
     const b = this.base[i];
-    if (b) startSignature(b.a, t);
+    if (!b) return;
+    startSignature(b.a, t, reduceMotion);
+    this.tapped = i;
+    this.tappedUntil = t + 4;
+  }
+
+  /** FTUE practice wave (spec §7): the carried stack floats off for 0.9 s, then snaps back with a pop. */
+  practiceSplash(t: number): void {
+    if (this.carried.length) this.practiceT = t;
   }
 
   pedestalWorld(i: number, out: Vector3): Vector3 | null {
@@ -434,6 +465,9 @@ export class CreatureVisuals {
       this.wild.delete(uid);
     }
 
+    this.sparkleT -= f.dt;
+    const sparkle = this.sparkleT <= 0 && !f.reduceMotion;
+    if (sparkle) this.sparkleT = 0.18;
     // Nearest-first assignment of outlines and billboards (no sorting: a few passes over a small map).
     let outlineN = 0;
     let spriteN = 0;
@@ -457,28 +491,39 @@ export class CreatureVisuals {
         const k = easeBack(age / 0.45);
         w.body.scale.multiplyScalar(Math.max(0.01, k));
       }
+      // Grow in over 170 → 150 m instead of popping at the cut-off.
+      if (dist > 150) w.body.scale.multiplyScalar(Math.max(0.01, (170 - dist) / 20));
       const mat = w.body.material;
       if (mat.userData.flash.value > 0) mat.userData.flash.value = Math.max(0, mat.userData.flash.value - f.dt / 0.06);
       if (dist > 80) continue;
-      // Glow disc, rare beam, legendary ring.
+      // Glow disc, rare beam, legendary ring (additive: the colour is the alpha, faded in over 80 → 68 m).
+      const fade = clamp((80 - dist) / 12, 0, 1);
       const rc = rarityColors[w.rarity];
       tmpS.setScalar(1.9 * w.scale);
       tmpS.y = 1;
       tmpQ.identity();
       tmpM.compose(tmpV.set(w.base.x, w.base.y + 0.04, w.base.z), tmpQ, tmpS);
-      this.glow.add(tmpM, tmpC.copy(rc).multiplyScalar(0.85));
+      this.glow.add(tmpM, tmpC.copy(rc).multiplyScalar(0.85 * fade));
       if (w.rarity >= 2 || w.mutation > 0) {
         tmpQ.setFromAxisAngle(UP, t * 0.5 + w.yaw);
         tmpS.set(1.1 * w.scale, 6 + w.rarity * 3, 1.1 * w.scale);
         tmpM.compose(tmpV.set(w.base.x, w.base.y, w.base.z), tmpQ, tmpS);
-        this.beams.add(tmpM, rc);
+        this.beams.add(tmpM, tmpC.copy(rc).multiplyScalar(fade));
       }
       if (w.rarity >= 4) {
         const k = ((t + w.yaw) % 1.2) / 1.2;
         tmpQ.identity();
         tmpS.setScalar(Math.min(1.6, w.scale) * (0.8 + 1.2 * k));
         tmpM.compose(tmpV.set(w.base.x, w.base.y + 0.06, w.base.z), tmpQ, tmpS);
-        this.rings.add(tmpM, tmpC.copy(rc).multiplyScalar(1 - k));
+        this.rings.add(tmpM, tmpC.copy(rc).multiplyScalar((1 - k) * fade));
+      }
+      // G13: Diamond twinkles and Rainbow sparkle trail, near the player only.
+      if (sparkle && dist < 40 && (w.mutation === 2 || w.mutation === 3)) {
+        const a = Math.random() * TAU;
+        const r = 0.5 * w.scale;
+        const y = w.body.position.y + Math.random() * w.height;
+        const col = w.mutation === 2 ? '#9FF6FF' : RAINBOW[(Math.random() * RAINBOW.length) | 0];
+        this.particles.emit(w.body.position.x + Math.cos(a) * r, y, w.body.position.z + Math.sin(a) * r, 0, 0.6, 0, col, 0.22, 0.5, w.mutation === 3 ? 1.5 : 0, true);
       }
       if (dist < 60) this.blobs.add(w.body.position.x, w.base.y, w.body.position.z, w.body.position.y - w.base.y, 1.6 * w.scale);
       if (dist < f.outlineRange && outlineN < this.outlines.length) {
@@ -497,6 +542,10 @@ export class CreatureVisuals {
         }
         s.material.opacity = clamp((f.billboardRange - dist) / 3, 0, 1);
         s.position.set(w.base.x, w.base.y + w.height + 0.9, w.base.z);
+        // Keep the name tag about the size it has at 14 m when the camera gets closer (it filled the view).
+        const k = clamp(f.camera.position.distanceTo(s.position) / 14, 0.5, 1);
+        s.scale.set(3.2 * k, 1.28 * k, 1);
+        s.position.y += 0.64 * (k - 1);
         s.visible = true;
       }
     }
@@ -557,10 +606,24 @@ export class CreatureVisuals {
     // Local acceleration in the player's frame.
     tmpQ.copy(playerQuat).invert();
     tmpV2.copy(this.accel).applyQuaternion(tmpQ);
+    // FTUE practice wave: float off (0.9 s), then snap back with a pop.
+    let float = 0;
+    if (this.practiceT >= 0) {
+      const pk = (t - this.practiceT) / 0.9;
+      if (pk >= 1) {
+        this.practiceT = -1;
+        this.practicePop = t;
+        for (const it of this.carried) {
+          this.particles.burst(it.body.position, '#FFFFFF', 6, { speed: 4, up: 2, size: 0.3, life: 0.4, additive: true, gravity: 0, drag: 3 });
+        }
+      } else float = easeOut(Math.min(1, pk / 0.6)) * (pk > 0.85 ? 1 - (pk - 0.85) / 0.15 : 1);
+    }
     let stackY = 0;
     for (let i = 0; i < this.carried.length; i++) {
       const it = this.carried[i];
       const scale = 0.62 * speciesScale(it.speciesId);
+      // Stack step from the real model height (tall species no longer sink into the one below).
+      const step = Math.max(0.62, speciesHeight(it.speciesId) * 0.9) * scale;
       // Wobble spring: rot = −k × accel (k .015, clamp .35), spring k 120, damping 10, amplitude × (1 + .35 i).
       const amp = 1 + 0.35 * i;
       const tx = clamp(-0.015 * tmpV2.z * amp, -0.35, 0.35);
@@ -590,7 +653,7 @@ export class CreatureVisuals {
           it.body.scale.setScalar(ws * (1 + 0.35 * Math.sin(Math.PI * popK)));
           it.body.position.copy(it.flyFrom);
           it.body.material.userData.flash.value = Math.max(0, 1 - it.flyT / 0.06);
-          stackY += scale * 1.0;
+          stackY += step;
           continue;
         }
         const k = Math.min(1, (it.flyT - 0.18) / 0.3);
@@ -604,11 +667,23 @@ export class CreatureVisuals {
           it.land = t;
         }
       } else it.body.position.copy(target);
+      if (float > 0) {
+        // Up and outward, spread by stack index, with a slow spin.
+        const a = i * 2.1 + t * 1.5;
+        it.body.position.x += Math.cos(a) * (0.6 + 0.3 * i) * float;
+        it.body.position.z += Math.sin(a) * (0.6 + 0.3 * i) * float;
+        it.body.position.y += (1.6 + 0.25 * i) * float;
+        tmpQ.setFromAxisAngle(UP, float * 2.5);
+        it.body.quaternion.multiply(tmpQ);
+      }
       const lk = (t - it.land) / 0.08;
       const sq = it.land > 0 && lk < 1 ? 1 - 0.15 * Math.sin(Math.PI * lk) : 1;
-      it.body.scale.set(s / Math.sqrt(sq), s * sq, s / Math.sqrt(sq));
+      // The 1.35 → 1 pop when the stack snaps back after the practice wave.
+      const pk = t - this.practicePop;
+      const pop = this.practicePop >= 0 && pk < 0.25 ? 1 + 0.35 * (1 - pk / 0.25) : 1;
+      it.body.scale.set((s * pop) / Math.sqrt(sq), s * sq * pop, (s * pop) / Math.sqrt(sq));
       it.body.material.userData.flash.value = 0;
-      stackY += scale * 1.0;
+      stackY += step;
       // Blink.
       animateBlink(it, t);
     }
@@ -638,14 +713,16 @@ export class CreatureVisuals {
       if (!c) continue;
       const p = this.course.pedestals[i];
       // Reuse a delivering creature that matches, flying it from the head.
-      let fly: { from: Vector3; t: number; delay: number } | null = null;
+      let fly: Fly | null = null;
       let a: Anim | null = null;
       const di = this.delivering.findIndex((d) => d.a.speciesId === c.speciesId && d.a.mutation === c.mutation);
       if (di >= 0) {
         const d = this.delivering.splice(di, 1)[0];
         a = d.a;
-        const stagger = this.base.filter((b) => b?.fly).length;
-        fly = { from: d.from, t: 0, delay: stagger * 0.12 };
+        let stagger = 0;
+        for (const b of this.base) if (b?.fly) stagger++;
+        tmpE.setFromQuaternion(a.body.quaternion, 'YXZ');
+        fly = { from: d.from, t: 0, dur: 0.35 + stagger * 0.1, s0: a.body.scale.y, yaw0: tmpE.y };
         const fresh = newAnim(a.body, c, 1.3, t);
         a = Object.assign(a, { scale: fresh.scale, height: fresh.height });
       } else {
@@ -677,12 +754,14 @@ export class CreatureVisuals {
       const topY = HOME_TOP + 0.4;
       tmpV.set(p.x, topY, p.z);
       if (b.fly) {
-        b.fly.t += f.dt;
-        const k = clamp((b.fly.t - b.fly.delay) / 0.35, 0, 1);
+        const fl = b.fly;
+        fl.t += f.dt;
+        const k = clamp(fl.t / fl.dur, 0, 1);
         const e = easeInOut(k);
-        b.a.body.position.lerpVectors(b.fly.from, tmpV, e);
+        b.a.body.position.lerpVectors(fl.from, tmpV, e);
         b.a.body.position.y += 2.5 * Math.sin(Math.PI * k);
-        b.a.body.scale.setScalar(b.a.scale * (0.6 + 0.4 * e));
+        b.a.body.scale.setScalar(fl.s0 + (b.a.scale - fl.s0) * e);
+        b.a.body.rotation.set(0, fl.yaw0 + wrapAngle(b.a.yawTarget - fl.yaw0) * e, 0, 'YXZ');
         if (k >= 1) {
           b.fly = null;
           b.pulse = t;
@@ -723,21 +802,51 @@ export class CreatureVisuals {
         const period = 2;
         const prev = (this.coinTimer - f.dt + i * 0.37) % period;
         const now = (this.coinTimer + i * 0.37) % period;
-        if (now < prev && i < 6 + (n > 10 ? 0 : 14)) this.particles.emit(p.x, topY + b.a.height + 0.3, p.z, 0, 1.6, 0, '#FFC92E', 0.25, 0.5, 0);
+        if (now < prev && this.coinSlots[i]) this.particles.emit(p.x, topY + b.a.height + 0.3, p.z, 0, 1.6, 0, '#FFC92E', 0.25, 0.5, 0);
       }
     }
 
     if (changed) {
-      const entries: { pos: Vector3; c: CreatureRef; income: string }[] = [];
+      const entries: { slot: number; pos: Vector3; c: CreatureRef; income: string }[] = [];
       for (let i = 0; i < this.base.length; i++) {
         const b = this.base[i];
         const c = i < n ? slots[i] : null;
         if (!b || !c) continue;
         const p = this.course.pedestals[i];
-        entries.push({ pos: new Vector3(p.x, HOME_TOP + 0.4 + b.a.height + 1.0, p.z), c, income: formatIncome(creatureIncome(c) * multiplier) });
+        entries.push({ slot: i, pos: new Vector3(p.x, HOME_TOP + 0.4 + b.a.height + 0.55, p.z), c, income: formatIncome(creatureIncome(c) * multiplier) });
       }
       this.labels.set(entries);
+      // Coin pops: every filled pedestal, or only the 6 best earners once more than 10 are filled.
+      this.coinSlots.fill(0);
+      const ranked = entries.map((e) => ({ i: e.slot, v: creatureIncome(e.c) })).sort((x, y) => y.v - x.v);
+      ranked.forEach((r, k) => {
+        if (ranked.length <= 10 || k < 6) this.coinSlots[r.i] = 1;
+      });
     }
+    this.updateLabelFocus(f);
+  }
+
+  /** Full label for the pedestal the player stands at (or a tapped one); the rest show the income tag only. */
+  private updateLabelFocus(f: CreatureFrame): void {
+    const cam = f.camera;
+    const pd = -tmpV.copy(f.player).applyMatrix4(cam.matrixWorldInverse).z;
+    this.labels.setPlayerDepth(pd);
+    let best = -1;
+    if (this.tapped >= 0 && f.time < this.tappedUntil && this.base[this.tapped]) best = this.tapped;
+    else {
+      let bestD = 6.5;
+      for (let i = 0; i < this.base.length; i++) {
+        if (!this.base[i]) continue;
+        const p = this.course.pedestals[i];
+        const d = Math.hypot(p.x - f.player.x, p.z - f.player.z);
+        if (d >= bestD) continue;
+        // Not one between the camera and the player (its label would cover the player).
+        if (-tmpV.set(p.x, p.y + 2, p.z).applyMatrix4(cam.matrixWorldInverse).z < pd - 2) continue;
+        bestD = d;
+        best = i;
+      }
+    }
+    this.labels.setFocus(best, f.dt);
   }
 }
 

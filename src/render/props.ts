@@ -113,7 +113,7 @@ export class Props {
   constructor(course: Course, edgeLines: boolean) {
     const rng = new Rng(course.seed ^ 0x9a0b);
     const glow = new BoxBuilder();
-    const mat = islandMaterial(edgeLines);
+    const mat = islandMaterial(edgeLines, true);
     for (const zone of course.zones) {
       const b = new BoxBuilder({ faces: true });
       const kinds = PROPS[zone.index % PROPS.length];

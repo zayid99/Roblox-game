@@ -59,8 +59,35 @@ export function resolveTier(q: QualitySetting, autoTier: QualityTier | null): Qu
 const LOWER: Record<QualityTier, QualityTier | null> = { high: 'medium', medium: 'low', low: null };
 
 /**
+ * Time-based render cap (§6.1). Both sides use the rAF timestamp (the old cap compared it with a later
+ * performance.now() and dropped every other frame at 60 Hz). rAF timestamps are vsync-aligned, so a 5 ms margin
+ * only absorbs jitter: under the 15 ms cap a 60 Hz screen renders every frame, 120 Hz exactly every other one
+ * (60 fps, even pacing), 90 Hz every frame, never 45.
+ */
+export class FrameCap {
+  private last = -1e9;
+
+  /** True when the frame at rAF time `nowMs` should render under a cap of `capMs` (0 = every frame). */
+  ready(nowMs: number, capMs: number): boolean {
+    if (capMs <= 0) return true;
+    if (nowMs - this.last < capMs - 5) return false;
+    this.last = nowMs;
+    return true;
+  }
+
+  reset(): void {
+    this.last = -1e9;
+  }
+}
+
+/** Average frame interval that counts as "keeping up" for a raise: a 60 Hz screen (16.7 ms) qualifies. */
+const GOOD_MS = 17.5;
+
+/**
  * Runtime DPR adaptation (§6.1): only the DPR changes at runtime. Frame time is averaged over 2 s windows;
- * > 18 ms lowers DPR by .25 (floor .75), < 12 ms for 6 s raises it, at most one change every 2 s.
+ * > 18 ms lowers DPR by .25 (floor .75), at most one change every 2 s. Keeping up with the screen (≤ 17.5 ms,
+ * reachable at 60 Hz) for 6 s raises it again; a drop soon after a raise doubles that wait (up to 96 s),
+ * so a device on the edge settles instead of flip-flopping.
  * Stuck at the floor for 10 s and still > 20 ms: suggest the next lower tier for the next load.
  */
 export class DprController {
@@ -71,6 +98,8 @@ export class DprController {
   private sinceChange = 0;
   private goodFor = 0;
   private floorFor = 0;
+  private raiseWait = 6;
+  private lastWasRaise = false;
 
   constructor(
     private cap: number,
@@ -85,6 +114,8 @@ export class DprController {
     this.tier = tier;
     this.dpr = cap;
     this.windowMs = this.windowFrames = this.sinceChange = this.goodFor = this.floorFor = 0;
+    this.raiseWait = 6;
+    this.lastWasRaise = false;
   }
 
   /** Returns true when the DPR changed. */
@@ -102,18 +133,23 @@ export class DprController {
       this.floorFor += span;
       if (this.auto && this.floorFor >= 10 && !this.pendingTier) this.pendingTier = LOWER[this.tier];
     } else this.floorFor = 0;
-    if (avg < 12) this.goodFor += span;
+    if (avg <= GOOD_MS) this.goodFor += span;
     else this.goodFor = 0;
     if (this.sinceChange < 2) return false;
     if (avg > 18 && this.dpr > floor + 1e-3) {
+      // The last raise didn't hold (dropped again within 12 s): wait longer before the next one.
+      if (this.lastWasRaise && this.sinceChange < 12) this.raiseWait = Math.min(96, this.raiseWait * 2);
+      this.lastWasRaise = false;
       this.dpr = Math.max(floor, this.dpr - 0.25);
       this.sinceChange = 0;
+      this.goodFor = 0;
       return true;
     }
-    if (this.goodFor >= 6 && this.dpr < this.cap - 1e-3) {
+    if (this.goodFor >= this.raiseWait && this.dpr < this.cap - 1e-3) {
       this.dpr = Math.min(this.cap, this.dpr + 0.25);
       this.sinceChange = 0;
       this.goodFor = 0;
+      this.lastWasRaise = true;
       return true;
     }
     return false;

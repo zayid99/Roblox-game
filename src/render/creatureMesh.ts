@@ -1,4 +1,4 @@
-import { Matrix4, Mesh, type BufferGeometry } from 'three';
+import { ExtrudeGeometry, Matrix4, Mesh, Shape, type BufferGeometry } from 'three';
 import { getSpecies, type CreatureRef, type Species } from '../game/creatures';
 import { BoxBuilder } from './boxes';
 import { creatureMaterial, type CreatureMaterial } from './materials';
@@ -116,16 +116,10 @@ function buildBody(b: BoxBuilder, s: Species): Head {
       return { x: 0, y: 1.46, z: 0, w: 0.9, eyeY: 1.06, eyeZ: 0.49, eyeX: 0.18 };
     }
     case 'star': {
-      // An upright five-armed star standing on its two lower arms; the face sits on the centre.
-      b.box(0, STAR_CY, 0, 0.6, 0.6, 0.4, body, { shadeBottom: 0.15 });
-      for (const a of STAR_ARMS) {
-        const rot = new Matrix4().makeRotationZ(a);
-        const dx = -Math.sin(a);
-        const dy = Math.cos(a);
-        b.box(dx * 0.36, STAR_CY + dy * 0.36, 0, 0.34, 0.36, 0.32, body, { matrix: rot, shadeBottom: dy < 0 ? 0.25 : 0 });
-        b.box(dx * 0.6, STAR_CY + dy * 0.6, 0, 0.2, 0.22, 0.26, body, { matrix: rot, shadeBottom: dy < 0 ? 0.3 : 0 });
-      }
-      return { x: 0, y: STAR_CY + 0.69, z: 0, w: 0.3, eyeY: STAR_CY + 0.06, eyeZ: 0.21, eyeX: 0.13 };
+      // An upright, chunky five-armed star standing on its two lower arms (one bevelled extrusion: stacked boxes
+      // read as a lumpy pile at a distance); the face sits on the centre.
+      b.mesh(starGeometry(), body, { matrix: new Matrix4().makeTranslation(0, STAR_CY, 0) });
+      return { x: 0, y: STAR_CY + 0.69, z: 0, w: 0.3, eyeY: STAR_CY + 0.06, eyeZ: STAR_FRONT, eyeX: 0.13 };
     }
     case 'puffer': {
       // A round-ish spiky ball with stubby fins and a pouty mouth.
@@ -148,6 +142,32 @@ const SPRINKLES: [number, number][] = [[-0.4, 0.2], [-0.2, -0.25], [0, 0.1], [0.
 /** Star arm angles (radians from straight up): top, upper pair, the two legs. */
 const STAR_ARMS = [0, 1.2566, -1.2566, 2.5133, -2.5133];
 const STAR_CY = 0.6;
+/** Star body: tip radius, inner (armpit) radius, half thickness incl. bevel. Front face at z = STAR_FRONT. */
+const STAR_R = 0.7;
+const STAR_IN = 0.34;
+const STAR_FRONT = 0.22;
+
+let starGeo: BufferGeometry | null = null;
+/** The bevelled star body, centred on the origin, facing +z (shared by every star species). */
+function starGeometry(): BufferGeometry {
+  if (starGeo) return starGeo;
+  const sh = new Shape();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const r = i % 2 ? STAR_IN : STAR_R;
+    const x = -Math.sin(a) * r;
+    const y = Math.cos(a) * r;
+    if (i === 0) sh.moveTo(x, y);
+    else sh.lineTo(x, y);
+  }
+  sh.closePath();
+  const bevel = 0.07;
+  const depth = (STAR_FRONT - bevel) * 2;
+  const g = new ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: 0.06, bevelSegments: 2, curveSegments: 1 });
+  g.translate(0, 0, -depth / 2);
+  starGeo = g;
+  return g;
+}
 /** Spike studs on a puffer's top, sides and back (front left clear for the face). */
 const PUFFER_SPIKES: [number, number, number][] = [
   [-0.26, 0.94, -0.2], [0.26, 0.94, -0.2], [0, 0.94, 0.12], [-0.3, 0.94, 0.26], [0.3, 0.94, 0.26], [0, 0.94, -0.32],
@@ -217,8 +237,11 @@ function details(b: BoxBuilder, s: Species, h: Head): void {
       break;
     case 'cookie_star':
       // Chocolate chips on the arms and a crumbly bite out of one leg.
-      for (const [x, y] of [[-0.26, 0.92], [0.3, 0.84], [-0.4, 0.45], [0.36, 0.3], [0.04, 1.08], [-0.2, 0.18]]) b.box(x, y, 0.18, 0.08, 0.08, 0.04, accent, { noOutline: true });
-      b.box(0, STAR_CY - 0.2, 0.21, 0.12, 0.04, 0.02, '#5a2330', { noOutline: true });
+      // [arm angle, distance out along the arm, sideways offset]: chips sit on the arms' front faces.
+      for (const [a, r, side] of [[0, 0.46, 0.03], [0, 0.64, -0.02], [1.2566, 0.46, -0.03], [-1.2566, 0.5, 0.03], [2.5133, 0.44, 0.04], [-2.5133, 0.52, -0.03]]) {
+        b.box(-Math.sin(a) * r + Math.cos(a) * side, STAR_CY + Math.cos(a) * r + Math.sin(a) * side, STAR_FRONT + 0.005, 0.1, 0.1, 0.03, accent, { noOutline: true });
+      }
+      b.box(0, STAR_CY - 0.2, STAR_FRONT + 0.005, 0.12, 0.04, 0.02, '#5a2330', { noOutline: true });
       break;
     case 'gum_puffer':
       // A big bubblegum bubble blown from the lips.
@@ -269,7 +292,7 @@ function details(b: BoxBuilder, s: Species, h: Head): void {
       // Candy stripes across every arm and a stick down the back.
       for (const a of STAR_ARMS) {
         const rot = new Matrix4().makeRotationZ(a);
-        for (const r of [0.42, 0.62]) b.box(-Math.sin(a) * r, STAR_CY + Math.cos(a) * r, 0, r > 0.5 ? 0.22 : 0.36, 0.06, r > 0.5 ? 0.28 : 0.34, accent, { matrix: rot, noOutline: true });
+        for (const r of [0.42, 0.62]) b.box(-Math.sin(a) * r, STAR_CY + Math.cos(a) * r, 0, r > 0.5 ? 0.24 : 0.4, 0.07, STAR_FRONT * 2 + 0.02, accent, { matrix: rot, noOutline: true });
       }
       b.box(0, STAR_CY - 0.2, -0.3, 0.06, 0.9, 0.06, extra);
       break;
@@ -294,7 +317,7 @@ function details(b: BoxBuilder, s: Species, h: Head): void {
       break;
     case 'nova_star':
       // A glowing core and sparkles orbiting the arms.
-      b.box(0, STAR_CY - 0.18, 0.205, 0.36, 0.14, 0.01, accent, { noOutline: true });
+      b.box(0, STAR_CY - 0.18, STAR_FRONT + 0.005, 0.36, 0.14, 0.01, accent, { noOutline: true });
       for (const [x, y] of [[-0.62, 1.05], [0.66, 1.0], [-0.7, 0.2], [0.7, 0.25], [0.0, 1.5]]) {
         b.box(x, y, 0, 0.14, 0.04, 0.04, extra, { noOutline: true });
         b.box(x, y, 0, 0.04, 0.14, 0.04, extra, { noOutline: true });
@@ -444,6 +467,26 @@ export function creatureOutline(speciesId: string): BufferGeometry {
     outlineCache.set(speciesId, g);
   }
   return g;
+}
+
+/** True for the shared per-species geometries above (never dispose these with one mesh). */
+export function isCachedCreatureGeometry(g: BufferGeometry): boolean {
+  for (const c of geometryCache.values()) if (c === g) return true;
+  for (const c of outlineCache.values()) if (c === g) return true;
+  return false;
+}
+
+const heightCache = new Map<string, number>();
+/** Top of a species' geometry in model units (before scaling). */
+export function speciesHeight(speciesId: string): number {
+  let h = heightCache.get(speciesId);
+  if (h === undefined) {
+    const g = creatureGeometry(speciesId);
+    if (!g.boundingBox) g.computeBoundingBox();
+    h = g.boundingBox!.max.y;
+    heightCache.set(speciesId, h);
+  }
+  return h;
 }
 
 /** Base scale of a species (before the wild ×1.5 / pedestal ×1.3 factors). */

@@ -74,8 +74,8 @@ export class ColdOpen {
       while (this.sprayT > 0.03) {
         this.sprayT -= 0.03;
         tmp.set((Math.random() - 0.5) * 45, 6 + Math.random() * 4, w.position.z + 2).applyMatrix4(this.group.matrixWorld);
-        this.spray.emit(tmp.x, tmp.y, tmp.z, 0, 3 + Math.random() * 3, 0, 7 + Math.random() * 4, 0.9);
-        this.spray.emit(tmp.x + 3, tmp.y + 1, tmp.z, 0, 4, 0, 8, 1.0);
+        this.spray.emit(tmp.x, tmp.y, tmp.z, 0, 3 + Math.random() * 3, 0, 4 + Math.random() * 2.5, 0.8);
+        this.spray.emit(tmp.x + 3, tmp.y + 1, tmp.z, 0, 4, 0, 5, 0.8);
       }
     } else if (t < 3) {
       const k = (t - 1.4) / 1.6;
