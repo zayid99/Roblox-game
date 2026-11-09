@@ -8,11 +8,14 @@ import type {
 } from './contracts';
 import { TimeScale } from './core/timeScale';
 import { buildAudioFrame, buildHudView, buildRenderFrame, lastReticle } from './core/views';
-import { HOME_FRONT_Z, WAVE } from './game/config';
+import { weekKey } from './game/clock';
+import { HOME_FRONT_Z, HOME_TOP, WAVE } from './game/config';
 import { creatureIncome, getSpecies, RARITIES, SPECIES, type CreatureRef } from './game/creatures';
 import { formatCash, formatIncome, type UpgradeKey } from './game/economy';
+import { featuredSpeciesFor } from './game/featured';
 import type { PlayerInput } from './game/player';
 import { Progression, type ProgressEvent } from './game/progression';
+import { VOYAGE, VOYAGE_LENGTH } from './game/quests';
 import { applyReward } from './game/rewards';
 import { buildShopView } from './game/shopView';
 import { activeBuddy, buildHatcheryView, buddyBonus, hatchEgg, inHatcheryZone, setBuddy } from './game/hatchery';
@@ -83,13 +86,25 @@ export class Game {
   private prefersReduced = false;
   private prevPanel: PanelKind | null = null;
   private prevTab: PanelTab | undefined;
-  private prevTracker: TrackerView | null = null;
+  /** Completed Voyage rows, each held for 1.6 s in turn so every check and coin fly plays. */
   private doneRow: { view: TrackerView; until: number } | null = null;
+  private readonly doneQueue: TrackerView[] = [];
   private nudge: { left: number; perSec: number } | null = null;
   private pillUp = false;
-  /** Hatchery: egg rolls, and whether the player stood at the stand last frame (open on entry). */
+  /** Hatchery: egg rolls, and whether the player is inside the stand's zone (it opens once per visit). */
   private readonly hatchRng = new Rng((Math.random() * 0x100000000) >>> 0);
   private atHatchery = false;
+  /** Set by the sim's 'shopZone' event: the player walked into the Shop stall (opens the Shop). */
+  private shopWalkUp = false;
+  /** A jump press waiting for the next fixed step (frames can run zero steps: high refresh, slow-mo). */
+  private jumpLatch = false;
+  /** Cash paid for a hidden-tab absence, toasted once the player is back in the game. */
+  private awayCash = 0;
+  /** Render interpolation: player position and wave front before the last fixed step. */
+  private readonly prevPos = new Vector3();
+  private prevFront = 0;
+  private hasPrev = false;
+  private readonly curPos = new Vector3();
 
   /** Movement is camera-relative, but while a direction is held we keep the camera angle from when it
    *  was pressed, so the camera can swing behind the player without bending the run (v0.1 behaviour). */
@@ -109,7 +124,8 @@ export class Game {
     this.platform.loadingStart();
     this.progress(0.2);
     this.loadSave();
-    this.sim = new GameSim(this.state);
+    // The first batch of creatures already weighs and flags this week's Featured Creature.
+    this.sim = new GameSim(this.state, { featuredSpecies: featuredSpeciesFor(weekKey(Date.now())) });
     this.progression = new Progression(this.state);
     this.prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
@@ -169,6 +185,12 @@ export class Game {
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => this.onVisibility());
     window.addEventListener('pagehide', () => this.save());
+    // Audio unlock (§8.4). Browsers only resume an AudioContext inside a user activation, and a touch
+    // pointerdown is not one (touchend / pointerup / click are). Every later gesture retries until the
+    // context runs, and UI buttons that stop propagation still count (capture phase on window).
+    for (const type of ['pointerup', 'touchend', 'click', 'keydown'] as const) {
+      window.addEventListener(type, (e) => this.onUserGesture(e), { capture: true, passive: true });
+    }
 
     if (this.progression.shouldShowWelcome()) this.openPanel('welcome');
     else {
@@ -297,8 +319,19 @@ export class Game {
 
   private onFirstGesture(): void {
     this.audio.unlock();
+    if (this.gestured) return;
     this.gestured = true;
     if (!this.paused) this.platform.gameplayStart();
+  }
+
+  /** Any trusted gesture anywhere on the page: (re)try the audio unlock until the context runs. */
+  private onUserGesture(e: Event): void {
+    if (!e.isTrusted || !this.hud) return;
+    if (!this.audio.unlocked || this.audio.needsGesture) this.audio.unlock();
+    if (!this.gestured) {
+      this.gestured = true;
+      if (!this.paused) this.platform.gameplayStart();
+    }
   }
 
   private onVisibility(): void {
@@ -306,14 +339,28 @@ export class Game {
       this.hiddenAt = performance.now();
       this.audio.setHidden(true);
       this.platform.gameplayStop();
+      // Time in a background tab counts as offline time; saved now so closing the hidden tab keeps it.
+      this.progression.markAway();
       this.save();
       return;
     }
     this.audio.setHidden(false);
     const away = performance.now() - this.hiddenAt;
     this.lastFrame = performance.now();
+    const cash = this.progression.creditAway();
+    // Short blips pay silently; a real absence gets a toast once the player is back in the game.
+    if (cash >= 1 && away >= 60_000) this.awayCash += cash;
     if (this.gestured && (away > 1000 || this.audio.needsGesture)) this.showResume();
-    else if (!this.paused && this.gestured) this.platform.gameplayStart();
+    else {
+      if (!this.paused && this.gestured) this.platform.gameplayStart();
+      this.toastAwayCash();
+    }
+  }
+
+  private toastAwayCash(): void {
+    if (this.awayCash < 1) return;
+    this.hud.toast({ text: `Earned while away: ${formatCash(this.awayCash)}`, kind: 'good', icon: 'cash' });
+    this.awayCash = 0;
   }
 
   private showResume(): void {
@@ -325,6 +372,7 @@ export class Game {
       this.audio.unlock();
       this.gestured = true;
       this.syncPause();
+      this.toastAwayCash();
     });
   }
 
@@ -432,12 +480,8 @@ export class Game {
           this.audio.play('ui.denied');
           return;
         }
+        // The FREE panel's CLAIM shows the "Tomorrow:" teaser itself (with the reward's icon).
         this.audio.play('claim');
-        const tomorrow = this.progression.free().daily.tiles.find((t) => t.state === 'tomorrow');
-        if (tomorrow) {
-          const text = rewardText(tomorrow.reward);
-          if (text) window.setTimeout(() => this.hud.toast({ text: `Tomorrow: ${text}`, kind: 'info', icon: 'gift' }), 900);
-        }
         this.save();
       },
       claimGift: (i) => {
@@ -508,8 +552,13 @@ export class Game {
     }
     this.audio.play('buy');
     const rarity = getSpecies(out.ref.speciesId).rarity;
+    const pearls = out.pearls ?? 0;
     // The reveal card opens after the panel's wobble and crack (panels/hatchery.ts timings).
-    window.setTimeout(() => this.audio.play('reveal', { rarity }), this.reduceMotion ? 630 : 2170);
+    window.setTimeout(() => {
+      this.audio.play('reveal', { rarity });
+      // hatchEgg already paid the first-discovery Pearls; say so with the reveal.
+      if (pearls > 0) this.hud.toast({ text: `New species: +${pearls} Pearls`, kind: 'good', icon: 'pearl' });
+    }, this.reduceMotion ? 630 : 2170);
     if (out.isNewSpecies && rarity >= 4) this.platform.happytime();
     this.save();
     return out;
@@ -532,6 +581,9 @@ export class Game {
   }
 
   private openPanel(kind: PanelKind, tab?: PanelTab): void {
+    // Opening another panel would destroy the Welcome Back card without collecting it (toast taps,
+    // walk-ups, hints). The card closes only through CLAIM, ×2 or Esc.
+    if (this.hud.openPanelKind === 'welcome' && kind !== 'welcome') return;
     this.hud.openPanel(kind, tab);
     this.syncPause();
   }
@@ -578,9 +630,17 @@ export class Game {
 
   private onTap(p: ScreenPt): void {
     if (this.paused) return;
-    const hit = this.gfx.pick(p);
+    let hit = this.gfx.pick(p);
     if (!hit) return;
     const state = this.state;
+    // Tapping your character opens the Locker on touch only (§9.5). With a mouse, clicks while looking
+    // around (pointer lock picks the screen centre, where the character stands) must not open it,
+    // and a pedestal under the cursor still gets picked.
+    if (hit.kind === 'player' && this.input.lastDevice !== 'touch') {
+      const i = this.pickPedestal(p);
+      if (i < 0) return;
+      hit = { kind: 'pedestal', index: i };
+    }
     if (hit.kind === 'pedestal') {
       const c = state.base[hit.index];
       if (!c) return;
@@ -598,6 +658,24 @@ export class Game {
     } else if (buildShopView(this.state).lockerUnlocked) {
       this.openPanel('shop', 'locker');
     }
+  }
+
+  /** The filled pedestal nearest to a screen point (the pedestal half of gfx.pick), or -1. */
+  private pickPedestal(p: ScreenPt): number {
+    const maxD = (60 * Math.min(window.innerWidth, window.innerHeight)) / 720;
+    let best = -1;
+    let bestD = maxD;
+    for (let i = 0; i < this.state.base.length; i++) {
+      if (!this.state.base[i]) continue;
+      const s = this.gfx.pedestalScreen(i);
+      if (!s) continue;
+      const d = Math.hypot(s.x - p.x, s.y - p.y);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
   }
 
   private updateInputYaw(): void {
@@ -654,7 +732,9 @@ export class Game {
 
     // 4. Fixed-step sim.
     if (!paused) {
-      const pressed = this.input.consumeJumpPressed();
+      // Latch the press until a fixed step takes it: a frame can run zero steps (high refresh rate,
+      // hit-stops, slow-mo), and the press would be lost.
+      if (this.input.consumeJumpPressed()) this.jumpLatch = true;
       this.updateInputYaw();
       const fx = -Math.sin(this.inputYaw);
       const fz = -Math.cos(this.inputYaw);
@@ -664,25 +744,42 @@ export class Game {
         moveX: rx * this.input.moveX + fx * this.input.moveY,
         moveZ: rz * this.input.moveX + fz * this.input.moveY,
         jumpHeld: this.input.jumpHeld,
-        jumpPressed: pressed,
+        jumpPressed: this.jumpLatch,
       };
       this.accumulator += simDt;
       let steps = 0;
       while (this.accumulator >= FIXED_DT && steps < MAX_STEPS) {
+        this.prevPos.copy(sim.player.pos);
+        this.prevFront = sim.wave.frontZ;
+        this.hasPrev = true;
         sim.step(FIXED_DT, input);
         input.jumpPressed = false;
+        this.jumpLatch = false;
         for (const e of sim.events) this.onSimEvent(e);
         this.accumulator -= FIXED_DT;
         steps++;
       }
       if (steps === MAX_STEPS) this.accumulator = 0;
-      // Walking up to the Hatchery stand opens it (once per visit).
+      // Walking up to the Hatchery stand opens it once per visit. Only leaving the zone re-arms it,
+      // so a hop inside the zone does not count as a new visit.
       const p = sim.player.pos;
-      const atHatch = state.ftue.done && !this.tutorial.active && sim.player.mode === 'ground' && sim.isOnHome() && inHatcheryZone(p.x, p.z);
-      if (atHatch && !this.atHatchery) this.openPanel('hatchery', 'eggs');
-      this.atHatchery = atHatch;
+      const inZone = state.ftue.done && !this.tutorial.active && inHatcheryZone(p.x, p.z) && p.y >= HOME_TOP - 0.5;
+      if (!inZone) this.atHatchery = false;
+      else if (!this.atHatchery && sim.isOnHome()) {
+        this.atHatchery = true;
+        this.openPanel('hatchery', 'eggs');
+      }
+      // Walking into the Shop stall opens the Shop (G8), once the Shop is unlocked. During the FTUE
+      // only at its "open the Shop" step.
+      if (this.shopWalkUp) {
+        this.shopWalkUp = false;
+        const shopOk = this.progression.railState(state.cash, true).shop.visible && (!this.tutorial.active || tf.step === 'shop');
+        if (shopOk && !this.paused && this.hud.openPanelKind === null) this.openPanel('shop', 'upgrades');
+      }
     } else {
       this.input.consumeJumpPressed();
+      this.jumpLatch = false;
+      this.shopWalkUp = false;
     }
 
     // 5. Progression (every frame, also while paused) and hints.
@@ -706,12 +803,23 @@ export class Game {
         this.firstFrame = false;
         this.gfx.playColdOpen();
       }
-      this.gfx.render(
-        buildRenderFrame({
-          sim, state, realDt: this.renderDt, simDt: this.renderSimDt, time: this.time, tf, reduceMotion: this.reduceMotion,
-          beatPhase: this.audio.beatPhase(),
-        }),
-      );
+      // The sim runs at 120 Hz, so a frame can hold 0 to 3 steps. Draw the player (and the camera that
+      // follows it) and the wave front between the last two steps, so motion stays smooth on any
+      // refresh rate. The real state is put back right after the draw.
+      const restore = this.interpolateForRender();
+      try {
+        this.gfx.render(
+          buildRenderFrame({
+            sim, state, realDt: this.renderDt, simDt: this.renderSimDt, time: this.time, tf, reduceMotion: this.reduceMotion,
+            beatPhase: this.audio.beatPhase(),
+          }),
+        );
+      } finally {
+        if (restore) {
+          sim.player.pos.copy(this.curPos);
+          sim.wave.frontZ = restore.front;
+        }
+      }
       this.renderDt = 0;
       this.renderSimDt = 0;
     }
@@ -734,9 +842,11 @@ export class Game {
       this.uiRoot.querySelector('.hud-root')?.classList.toggle('objective-up', pillUp);
     }
 
-    // 8. Audio.
+    // 8. Audio. The music lowpass is for tutorial slow-mo and the big reveal only (§8), not for the short
+    // hit-stops of pickups, fast grabs and Perfect releases.
+    const slowmo = tf.musicLowpass || tf.timeScale < 1 || this.timeScale.isActive('reveal');
     this.audio.update(
-      buildAudioFrame({ sim, state, realDt, panelOpen, slowmo: scale < 0.9 || tf.musicLowpass, ftueStep: tf.step, lowTier: this.gfx.tier === 'low' }),
+      buildAudioFrame({ sim, state, realDt, panelOpen, slowmo, ftueStep: tf.step, lowTier: this.gfx.tier === 'low' }),
     );
 
     this.saveTimer += realDt;
@@ -746,13 +856,34 @@ export class Game {
     }
   }
 
-  /** The Voyage tracker, holding a completed row for 1.6 s so it can play its check and coin fly. */
+  /**
+   * Render interpolation: moves the player and the wave front to where they were `accumulator` into
+   * the current fixed step (between the last two steps). Returns the real wave front to restore (the
+   * real position is in curPos), or null when nothing moved. Teleports and a new surge draw as is.
+   */
+  private interpolateForRender(): { front: number } | null {
+    if (!this.hasPrev) return null;
+    const alpha = Math.max(0, Math.min(1, this.accumulator / FIXED_DT));
+    if (alpha >= 1) return null;
+    const sim = this.sim;
+    const pos = sim.player.pos;
+    const front = sim.wave.frontZ;
+    this.curPos.copy(pos);
+    if (this.prevPos.distanceToSquared(pos) < 4) pos.lerpVectors(this.prevPos, this.curPos, alpha);
+    if (Math.abs(front - this.prevFront) < 5) sim.wave.frontZ = this.prevFront + (front - this.prevFront) * alpha;
+    return { front };
+  }
+
+  /** The Voyage tracker. Completed rows are held for 1.6 s each, in turn, so each plays its check and coin fly. */
   private trackerView(): TrackerView | null | undefined {
     if (this.doneRow && this.time < this.doneRow.until) return this.doneRow.view;
     this.doneRow = null;
-    const v = this.progression.tracker();
-    this.prevTracker = v;
-    return v;
+    const next = this.doneQueue.shift();
+    if (next) {
+      this.doneRow = { view: next, until: this.time + 1.6 };
+      return next;
+    }
+    return this.progression.tracker();
   }
 
   /** 3-2-1 centre countdown in the last seconds of the warning. */
@@ -896,8 +1027,10 @@ export class Game {
         const buddy = activeBuddy(state);
         if (buddy && e.bonusCash > 0) hud.float(this.playerScreen(2.6), `BUDDY +${Math.round(buddyBonus(buddy) * 100)}%`, 'bonus', 'buddy');
         if (placed.length) {
-          const gain = placed.reduce((s, c) => s + creatureIncome(c), 0) * state.multiplier * state.streakBonus;
-          hud.toast({ text: `+${formatIncome(gain)} added`, kind: 'good', icon: 'pedestal' });
+          // Net change: base creatures pushed off by better ones (and sold) no longer earn.
+          const pushedOff = e.result.sold.reduce((s, x) => s + (x.displaced ? creatureIncome(x.creature) : 0), 0);
+          const gain = (placed.reduce((s, c) => s + creatureIncome(c), 0) - pushedOff) * state.multiplier * state.streakBonus;
+          if (gain > 0) hud.toast({ text: `+${formatIncome(gain)} added`, kind: 'good', icon: 'pedestal' });
         }
         for (const s of e.result.sold) hud.toast({ text: `Base full: sold ${getSpecies(s.creature.speciesId).name} for ${formatCash(s.cash)}`, kind: 'info', icon: 'cash' });
         this.save();
@@ -907,7 +1040,8 @@ export class Game {
         if ((e.reason === 'sea' || e.reason === 'splash') && e.count >= 2) hud.float(this.playerScreen(2), 'CHAIN LOST', 'bonus', 'chainLost');
         break;
       case 'closeCall':
-        hud.float(this.playerScreen(2), 'CLOSE CALL +25%', 'bonus', 'closeCall');
+        // Only a home delivery pays the +25%; a lighthouse-pad close call is a stat and a banner (§9.4).
+        hud.float(this.playerScreen(2), e.where === 'home' ? 'CLOSE CALL +25%' : 'CLOSE CALL', 'bonus', 'closeCall');
         hud.banner({ title: 'CLOSE CALL', hue: 'coral', priority: 'info', ms: 1400 });
         break;
       case 'splash':
@@ -943,13 +1077,18 @@ export class Game {
         hud.banner({ title: zone.def.name.toUpperCase(), sub: `${RARITIES[r].name} creatures`, hue: `r${r as 0 | 1 | 2 | 3 | 4 | 5 | 6}`, priority: 'zone' });
         break;
       }
-      case 'waveWarning':
+      case 'waveWarning': {
+        const spot = this.sim.safeSpot();
         hud.banner({
           title: e.golden ? 'GOLDEN WAVE' : e.big ? 'BIG WAVE' : 'WAVE INCOMING',
-          sub: 'Get home or launch up a lighthouse',
+          sub: spot === 'home' ? "You're safe at home" : spot === 'lighthouse' ? "You're safe up here" : 'Get home or launch up a lighthouse',
           hue: e.golden ? 'gold' : e.big ? 'grape' : 'coral',
           priority: 'wave',
         });
+        break;
+      }
+      case 'shopZone':
+        this.shopWalkUp = true;
         break;
       case 'surgeEnd':
         hud.toast({ text: e.golden ? 'Golden creatures washed up' : 'Fresh creatures washed up', kind: 'info', icon: e.golden ? 'sparkle' : 'creature' });
@@ -1000,9 +1139,15 @@ export class Game {
     this.tutorial.onProgressEvent(e);
     switch (e.type) {
       case 'questDone': {
-        const prev = this.prevTracker;
-        if (prev && prev.rows.length) {
-          this.doneRow = { view: { ...prev, rows: [{ ...prev.rows[0], progress: 1, reward: e.reward, done: true }] }, until: this.time + 1.6 };
+        // The tracker is shown after the FTUE only. Build the row from the quest that was completed
+        // (not the tracker's last view), so quests completed back to back each get their own row.
+        const q = VOYAGE[e.index - 1];
+        if (q && this.state.ftue.done) {
+          this.doneQueue.push({
+            title: 'FIRST VOYAGE',
+            count: `${q.n}/${VOYAGE_LENGTH}`,
+            rows: [{ icon: q.icon, text: q.text, progress: 1, reward: e.reward, done: true }],
+          });
         }
         this.audio.play('claim');
         break;
