@@ -306,10 +306,10 @@
 }
 /* 640 px class: a slightly shorter meter (without the #n chip) so the pearls clear it. */
 @media (max-width: 700px) {
-  [data-layout="landscape"] .wave-meter { width: 250px; }
+  [data-layout="landscape"] .wave-meter { width: 240px; }
   [data-layout="landscape"] .wave-meter .wm-chip { display: none; }
   [data-layout="landscape"] .wave-meter .wm-text { right: 14px; }
-  [data-layout="landscape"] .course { width: 250px; --cbw: 250px; }
+  [data-layout="landscape"] .course { width: 240px; --cbw: 240px; }
 }
 /* ======================================================================= */
 /* Phone portrait (390×844)                                                */
