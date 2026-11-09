@@ -1,3 +1,4 @@
+import './canvasCompat';
 import {
   BufferGeometry,
   CanvasTexture,
@@ -151,7 +152,9 @@ export class SignAtlas {
         uv.push(uu, vv);
       }
       idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      idx.push(base + 4, base + 6, base + 5, base + 4, base + 7, base + 6);
+      // The x mirror already flips the winding, so the same order faces −z (it used to face +z twice,
+      // leaving every sign invisible from behind).
+      idx.push(base + 4, base + 5, base + 6, base + 4, base + 6, base + 7);
     }
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(pos, 3));
@@ -161,6 +164,24 @@ export class SignAtlas {
     const tex = new CanvasTexture(canvas);
     tex.colorSpace = SRGBColorSpace;
     tex.anisotropy = 4;
-    return new Mesh(g, new MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, toneMapped: false }));
+    return new Mesh(g, nearFadeMaterial(tex));
   }
+}
+
+/**
+ * Sign material that fades boards out as the camera gets within a few metres (the orbit camera has no collision,
+ * and a board right in front of the lens filled the screen).
+ */
+function nearFadeMaterial(map: CanvasTexture): MeshBasicMaterial {
+  const m = new MeshBasicMaterial({ map, transparent: true, alphaTest: 0.05, toneMapped: false });
+  m.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vSignDepth;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvSignDepth = -mvPosition.z;');
+    s.fragmentShader = s.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vSignDepth;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.a *= smoothstep(3.0, 7.0, vSignDepth);');
+  };
+  m.customProgramCacheKey = () => 'sign-near-fade';
+  return m;
 }
