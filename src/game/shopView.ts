@@ -1,4 +1,4 @@
-import { UPGRADES, UPGRADE_ORDER, baseSlots, emptyLevels, rebirthMultiplier } from './economy';
+import { REBIRTH, UPGRADES, UPGRADE_ORDER, baseSlots, emptyLevels, rebirthMultiplier } from './economy';
 import type { GameState } from './state';
 import type { RebirthView, ShopRow, ShopView } from '../contracts';
 
@@ -38,10 +38,11 @@ export function buildRebirthView(state: GameState): RebirthView {
     can: state.canRebirth(),
     // Sticky once unlocked (Progression sets the flag), like the rail tile.
     visible: state.rebirths > 0 || !!state.flags['unlock:rebirth'] || state.cash >= cost * REBIRTH_VISIBLE_AT,
-    // The Rebirth tab pairs these lines by index with its icons: keep pearl, locker, index, rebirth, flame (then a
-    // check); lose cash, shop, creature, pedestal. state.rebirth() keeps the best creatures that fit and sells the rest.
-    keep: ['Pearls', 'Locker items', 'Index', `Rebirth bonus ×${multNext.toFixed(1)}`, 'Best zone record', 'Your best creatures'],
-    lose: ['Cash', 'All upgrades', "Creatures that don't fit (sold)", `Pedestals back to ${baseSlots(emptyLevels())}`],
+    keep: [
+      'Pearls', 'Locker items', 'Index', `Rebirth bonus ×${+multNext.toFixed(2)}`, 'Best zone record',
+      ...(REBIRTH.keep > 0 ? [REBIRTH.keep === 1 ? 'Your best creature' : `Your best ${REBIRTH.keep} creatures`] : []),
+    ],
+    lose: ['Cash', 'All upgrades', ...(REBIRTH.keep > 0 ? [] : ['Creatures on pedestals']), `Pedestals back to ${baseSlots(emptyLevels())}`],
   };
 }
 

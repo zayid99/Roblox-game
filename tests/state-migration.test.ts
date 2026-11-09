@@ -172,8 +172,8 @@ describe('economy bulk buying', () => {
     expect(maxAffordable('speed', 0, c2)).toBe(2);
     expect(maxAffordable('speed', 0, c2 - 1)).toBe(1);
     expect(maxAffordable('speed', 0, 0)).toBe(0);
-    expect(cheapestUpgradeCost(emptyLevels())).toBe(20);
-    const maxed = { speed: 16, reach: 14, power: 12, carry: 6, slots: 8 };
+    expect(cheapestUpgradeCost(emptyLevels())).toBe(25);
+    const maxed = { speed: 16, reach: 11, power: 12, carry: 6, slots: 8 };
     expect(cheapestUpgradeCost(maxed)).toBe(Infinity);
   });
 
@@ -194,12 +194,12 @@ describe('economy bulk buying', () => {
     const v = buildShopView(s);
     expect(v.rows.map((r) => r.key)).toEqual(['speed', 'reach', 'power', 'carry', 'slots']);
     const speed = v.rows[0];
-    expect(speed.cost).toBe(20);
+    expect(speed.cost).toBe(25);
     expect(speed.affordable).toBe(true);
     expect(speed.maxAffordable).toBe(maxAffordable('speed', 0, 100));
     expect(speed.next).not.toBeNull();
     expect(v.rebirth.visible).toBe(false);
-    expect(v.rebirth.multNext).toBe(1.5);
+    expect(v.rebirth.multNext).toBe(2);
     expect(v.lockerUnlocked).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import {
   emptyLevels,
   maxAffordable,
   playerStats,
+  REBIRTH,
   rebirthCost,
   rebirthMultiplier,
   upgradeCost,
@@ -432,7 +433,7 @@ export class GameState {
   }
 
   /**
-   * Resets cash and upgrades for a permanent income multiplier. Creatures that fit and the index stay.
+   * Resets cash, upgrades and the base for a permanent income multiplier (REBIRTH in economy.ts); the index stays.
    * The first rebirth grants the Aurora Rope, later ones 200 Pearls (§9.5).
    */
   rebirth(): boolean {
@@ -444,11 +445,9 @@ export class GameState {
     this.base = [];
     this.syncBaseSize();
     kept.sort((a, b) => creatureIncome(b) - creatureIncome(a));
-    // Keep the best creatures that fit; sell the rest.
-    kept.forEach((c, i) => {
-      if (i < this.base.length) this.base[i] = c;
-      else this.earn(creatureIncome(c) * ECONOMY.sellSeconds * this.multiplier);
-    });
+    // Keep the best REBIRTH.keep creatures that fit; the rest swim free (no cash, so the climb starts from zero).
+    const keep = Math.min(this.base.length, REBIRTH.keep);
+    kept.slice(0, keep).forEach((c, i) => (this.base[i] = c));
     if (this.rebirths === 1 && !this.cosmetics.owned.includes('rope_aurora')) this.cosmetics.owned.push('rope_aurora');
     else this.pearls += 200;
     return true;
