@@ -75,8 +75,8 @@
 .wave-meter[data-phase="calm-gold"] .wm-disc > .ic { color: #fff; }
 .wave-meter[data-phase="calm-gold"] .wm-bar { --bh: var(--gold-a); --bc: var(--gold-b); }
 .wave-meter[data-phase="calm-gold"] .wm-spark { display: block; }
-.wave-meter[data-phase="warning"], .wave-meter[data-phase="surge"] { --dc-hi: var(--coral-hi); --dc: var(--coral); --dc-lo: var(--coral-lo); }
-.wave-meter[data-phase="warning"] .wm-bar, .wave-meter[data-phase="surge"] .wm-bar { --bh: var(--coral-hi); --bc: var(--coral); }
+.wave-meter[data-phase="warning"], .wave-meter[data-phase="surge"], .wave-meter[data-phase="hit"] { --dc-hi: var(--coral-hi); --dc: var(--coral); --dc-lo: var(--coral-lo); }
+.wave-meter[data-phase="warning"] .wm-bar, .wave-meter[data-phase="surge"] .wm-bar, .wave-meter[data-phase="hit"] .wm-bar { --bh: var(--coral-hi); --bc: var(--coral); }
 .wave-meter[data-phase="warning"] .wm-bar .stripes, .wave-meter[data-phase="surge"] .wm-bar .stripes { display: block; }
 .wave-meter[data-phase="warning"] .wm-digits { color: #FFE3E6; }
 .wave-meter[data-phase="safe"] { --dc-hi: var(--grass-hi); --dc: var(--grass); --dc-lo: var(--grass-lo); }

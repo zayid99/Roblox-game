@@ -77,7 +77,8 @@ export interface HudView {
   layout: LayoutMode; touch: boolean;
   cash: number; pearls: number; income: number; multiplier: number; rebirths: number; streak: number;
   wave: { phase: WavePhase; frozen: boolean; timer: number; duration: number; golden: boolean; big: boolean; number: number;
-          progress: number; hitsPlayerIn: number | null /* null if not finite */; safe: boolean };
+          progress: number; hitsPlayerIn: number | null /* null if not finite */; safe: boolean;
+          caught?: boolean /* the wave is tumbling the player right now */ };
   course: { playerT: number; waveT: number | null; zone: number /* -1 home */; visible: boolean };
   carried: CreatureRef[]; capacity: number; tripBonusPct: number /* 0 when tripBest < 2 */;
   chain: { count: number; timerFrac: number } | null;

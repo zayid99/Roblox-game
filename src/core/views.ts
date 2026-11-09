@@ -135,6 +135,7 @@ export function buildHudView(i: HudViewInput): HudView {
       progress,
       hitsPlayerIn: Number.isFinite(hits) ? hits : null,
       safe: sim.playerSafe(),
+      caught: sim.splashTime > 0,
     },
     course: {
       playerT: courseT(sim, p.pos.z),

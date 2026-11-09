@@ -3,7 +3,7 @@ import type { HudView } from '../../contracts';
 import { el, fmtClock, replay, setText, uiSound } from '../dom';
 import { icon } from '../icons';
 
-type Phase = 'paused' | 'calm' | 'calm-big' | 'calm-gold' | 'warning' | 'surge' | 'safe';
+type Phase = 'paused' | 'calm' | 'calm-big' | 'calm-gold' | 'warning' | 'surge' | 'safe' | 'hit';
 
 export class WaveMeterPart {
   readonly el: HTMLElement;
@@ -36,7 +36,7 @@ export class WaveMeterPart {
     if (w.frozen) phase = 'paused';
     else if (w.phase === 'calm') phase = w.big ? 'calm-big' : w.golden ? 'calm-gold' : 'calm';
     else if (w.phase === 'warning') phase = 'warning';
-    else phase = w.safe ? 'safe' : 'surge';
+    else phase = w.caught ? 'hit' : w.safe ? 'safe' : 'surge';
 
     if (phase !== this.last.phase) {
       const prev = this.last.phase;
@@ -60,6 +60,9 @@ export class WaveMeterPart {
     else if (phase === 'surge') {
       label = 'HITS YOU IN';
       digits = w.hitsPlayerIn === null ? '' : `${Math.max(0, Math.ceil(w.hitsPlayerIn))}s`;
+    } else if (phase === 'hit') {
+      label = 'WAVE HIT YOU';
+      digits = '';
     } else if (phase === 'safe') {
       label = "YOU'RE SAFE";
       digits = '';
