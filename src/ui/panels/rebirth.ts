@@ -35,7 +35,7 @@ export class RebirthTab {
       `<div class="card rb-col"><span class="chip chip--grass">${icon('check', 18)}<span class="t-stroke">KEEP</span></span><ul>${v.keep.map((t, i) => line(KEEP_ICON[i] ?? 'check', t)).join('')}</ul></div>` +
       `<div class="card rb-col"><span class="chip chip--coral">${icon('close', 16)}<span class="t-stroke">LOSE</span></span><ul>${v.lose.map((t, i) => line(LOSE_ICON[i] ?? 'close', t)).join('')}</ul></div>` +
       `</div>` +
-      `<div class="bar bar--gold rb-bar"><div class="fill" style="transform:scaleX(${Math.min(1, v.progress)})"></div><span class="bl">${formatCash(Math.min(v.cost, v.progress * v.cost))} / ${formatCash(v.cost)}</span></div>` +
+      `<div class="bar bar--gold rb-bar"><div class="fill" style="transform:scaleX(${Math.min(1, v.progress)})"></div><span class="bl">${formatCash(Math.min(v.cost, v.progress * v.cost), 'down')} /${formatCash(v.cost)}</span></div>` +
       `<div class="rb-btnwrap"><svg class="rb-ring" viewBox="0 0 330 82" preserveAspectRatio="none"><rect x="3" y="3" width="324" height="76" rx="24" pathLength="${RING_LEN}" fill="none" stroke="#1B1736" stroke-width="8"/><rect class="rb-prog" x="3" y="3" width="324" height="76" rx="24" pathLength="${RING_LEN}" fill="none" stroke="#FFF07A" stroke-width="5" stroke-dasharray="${RING_LEN}" stroke-dashoffset="${RING_LEN}"/></svg>` +
       `<button class="btn btn--l ${v.can ? 'btn--gold btn--shine' : 'btn--cant keep-white'} rb-go">${icon('rebirth', 34)}<span class="label">HOLD TO REBIRTH</span></button></div>`;
     this.btn = this.root.querySelector('.rb-go') as HTMLButtonElement;

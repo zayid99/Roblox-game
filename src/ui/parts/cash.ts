@@ -1,5 +1,5 @@
 // C4 currency pills: cash (with income and rebirth chips) and pearls.
-import { formatCash, formatIncome, formatPearls } from '../../game/economy';
+import { formatBalance, formatIncome, formatPearls } from '../../game/economy';
 import { el, gradText, replay, setText } from '../dom';
 import { icon } from '../icons';
 
@@ -105,7 +105,7 @@ export class CashPart {
     this.pearlIcon = this.pearlPill.querySelector('.ic') as HTMLElement;
     this.incomeTxt = this.incomeRow.querySelector('.inc') as HTMLElement;
     this.multChip = this.incomeRow.querySelector('.mult') as HTMLElement;
-    this.cash = new RollingValue(formatCash, this.cashPill.querySelector('.val') as HTMLElement, this.cashPill, 196);
+    this.cash = new RollingValue(formatBalance, this.cashPill.querySelector('.val') as HTMLElement, this.cashPill, 196);
     this.pearls = new RollingValue(formatPearls, this.pearlPill.querySelector('.val') as HTMLElement, this.pearlPill, 112);
   }
 

@@ -49,7 +49,8 @@ export class ToastsPart {
   }
 
   private hold(t: ToastSpec): number {
-    return t.kind === 'bad' ? 1.8 : t.action ? 6 : 2.2;
+    // An action (the KEEP THEM rewarded offer) gets its 6 s even on a 'bad' toast (§10.7).
+    return t.action ? 6 : t.kind === 'bad' ? 1.8 : 2.2;
   }
 
   private max(): number {
