@@ -1,4 +1,5 @@
 import { BufferGeometry, Color, Float32BufferAttribute, Matrix3, Matrix4, Uint16BufferAttribute, Uint32BufferAttribute, Vector3 } from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Unit cube faces: outward normal, then 4 corners in counter-clockwise order.
 const FACES: { n: [number, number, number]; c: [number, number, number][] }[] = [
@@ -67,6 +68,7 @@ export class BoxBuilder {
   private readonly eye: number[] = [];
   private readonly skin: number[] = [];
   private readonly records: BoxRecord[] = [];
+  private readonly meshes: { geo: BufferGeometry; matrix?: Matrix4 }[] = [];
   private hasEye = false;
   private hasBone = false;
 
@@ -127,6 +129,37 @@ export class BoxBuilder {
     return this;
   }
 
+  /**
+   * Appends any indexed or non-indexed geometry with normals (e.g. an extruded shape) in one colour. Its outline
+   * hull is grown along smoothed normals.
+   */
+  mesh(geo: BufferGeometry, color: Color | string | number, opts: { matrix?: Matrix4; noOutline?: boolean } = {}): this {
+    tmpColor.set(color);
+    const p = geo.getAttribute('position');
+    const n = geo.getAttribute('normal');
+    if (opts.matrix) normalMatrix.getNormalMatrix(opts.matrix);
+    const base = this.vertexCount;
+    for (let i = 0; i < p.count; i++) {
+      tmpV.fromBufferAttribute(p, i);
+      tmpN.fromBufferAttribute(n, i);
+      if (opts.matrix) {
+        tmpV.applyMatrix4(opts.matrix);
+        tmpN.applyMatrix3(normalMatrix).normalize();
+      }
+      this.positions.push(tmpV.x, tmpV.y, tmpV.z);
+      this.normals.push(tmpN.x, tmpN.y, tmpN.z);
+      this.colors.push(tmpColor.r, tmpColor.g, tmpColor.b);
+      if (this.opts.faces) this.face.push(1, 1, 2, 2);
+      this.eye.push(0, 0);
+      this.skin.push(0);
+    }
+    const index = geo.getIndex();
+    const count = index ? index.count : p.count;
+    for (let i = 0; i < count; i++) this.indices.push(base + (index ? index.getX(i) : i));
+    if (!opts.noOutline) this.meshes.push({ geo, matrix: opts.matrix?.clone() });
+    return this;
+  }
+
   /** Box given by its min/max corners. */
   boxMinMax(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: Color | string | number, opts?: BoxOptions): this {
     return this.box((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, color, opts);
@@ -143,6 +176,7 @@ export class BoxBuilder {
     this.skin.push(...other.skin);
     for (const i of other.indices) this.indices.push(i + base);
     this.records.push(...other.records);
+    this.meshes.push(...other.meshes);
     this.hasEye ||= other.hasEye;
     this.hasBone ||= other.hasBone;
     return this;
@@ -170,11 +204,27 @@ export class BoxBuilder {
     for (const r of this.records) {
       b.box(r.cx, r.cy, r.cz, r.sx + grow * 2, r.sy + grow * 2, r.sz + grow * 2, 0x000000, { matrix: r.matrix, bone: r.bone });
     }
+    for (const m of this.meshes) b.mesh(grownHull(m.geo, grow, m.matrix), 0x000000);
     const g = b.build();
     g.deleteAttribute('color');
     g.deleteAttribute('normal');
     return g;
   }
+}
+
+/** A copy of `geo` (transformed) with corners welded and every vertex pushed out along its smoothed normal. */
+function grownHull(geo: BufferGeometry, grow: number, matrix?: Matrix4): BufferGeometry {
+  const src = new BufferGeometry();
+  src.setAttribute('position', geo.getAttribute('position').clone());
+  if (geo.getIndex()) src.setIndex(geo.getIndex()!.clone());
+  if (matrix) src.applyMatrix4(matrix);
+  const welded = mergeVertices(src, 1e-4);
+  welded.computeVertexNormals();
+  const p = welded.getAttribute('position');
+  const n = welded.getAttribute('normal');
+  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + n.getX(i) * grow, p.getY(i) + n.getY(i) * grow, p.getZ(i) + n.getZ(i) * grow);
+  src.dispose();
+  return welded;
 }
 
 function addSkin(g: BufferGeometry, bones: number[]): void {
