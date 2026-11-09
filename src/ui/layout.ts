@@ -44,6 +44,10 @@ export class LayoutWatcher {
     this.root.classList.toggle('short', h < 360);
     this.root.style.setProperty('--u', String(scale));
     this.zoomed.style.setProperty('zoom', String(scale));
+    // Size the zoomed layer in px: with standardized CSS zoom (Chrome 128+) a percentage width is not
+    // zoomed, so calc(100% / --u) left the HUD in the top-left 1/u of a 1920x1080 window.
+    this.zoomed.style.width = scale !== 1 ? `${w / scale}px` : '';
+    this.zoomed.style.height = scale !== 1 ? `${h / scale}px` : '';
     if (changed) for (const l of this.listeners) l(mode);
   }
 }
