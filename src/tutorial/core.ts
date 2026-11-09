@@ -98,6 +98,8 @@ export class TutorialCore {
   private completedSwings = 0;
   private grabbedSolid: Solid | null = null;
   private releasedThisSwing = false;
+  /** A jump (or double jump) since the last landing or respawn: tells "did not hold" from "never jumped". */
+  private jumpedSinceGround = false;
   private passes = 0;
   private lastSign = 0;
   private windowEver = false;
@@ -174,8 +176,9 @@ export class TutorialCore {
       return;
     }
     this.shopDone = step === 'wave' && f.rewarded.includes(voyageRewardKey(5));
-    this.waveDone = false;
     this.practiceOver = f.rewarded.includes(voyageRewardKey(6)) && idx(step) >= idx('shop');
+    // V6 is paid at the first surgeEnd: resuming the interrupted shop step must not replay the wave step.
+    this.waveDone = this.practiceOver;
     this.begin(step, false);
   }
 
@@ -241,9 +244,15 @@ export class TutorialCore {
         if (e.event === 'grab') this.onGrab(sim);
         else if (e.event === 'release') this.onRelease();
         else if (e.event === 'sea') this.onSea(sim);
+        else if (e.event === 'jump' || e.event === 'doubleJump') this.jumpedSinceGround = true;
         break;
       case 'landed':
+        // Landing while still on the rope ends the swing like a release (no 'release' event).
+        if (sim.player.landedAttached && this.grabbedSolid) this.releasedThisSwing = true;
         this.onLanded(e.solid, e.islandOrder);
+        break;
+      case 'respawn':
+        this.jumpedSinceGround = false;
         break;
       case 'collect':
         if (!this.active) break;
@@ -328,7 +337,10 @@ export class TutorialCore {
     this.log.seaFall();
     if (!this.active) return;
     if (this.step === 'grab' || (this.step === 'release' && !this.releasedThisSwing)) {
-      this.setFail(COPY.grabFail, 'fail:hold');
+      const touch = this.isTouch();
+      // Walked off the edge without jumping: "keep holding" would be the wrong lesson.
+      if (this.jumpedSinceGround) this.setFail(touch ? COPY.grabFail : COPY.grabFailDesktop, 'fail:hold');
+      else this.setFail(touch ? COPY.jumpFail : COPY.jumpFailDesktop, 'fail:jump');
     } else if (this.step === 'release') {
       this.setFail(COPY.soClose, 'fail:soClose');
       this.log.hint('soClose');
@@ -344,6 +356,7 @@ export class TutorialCore {
     const crossed = this.releasedThisSwing && this.grabbedSolid !== null && solid !== this.grabbedSolid;
     if (crossed) this.completedSwings++;
     this.releasedThisSwing = false;
+    this.jumpedSinceGround = false;
     if (!this.active) return;
     if (this.step === 'release' && crossed && islandOrder >= 1) {
       this.complete('release');
@@ -400,6 +413,7 @@ export class TutorialCore {
         break;
       case 'collect':
         this.nudged = false;
+        this.firstCollectAt = -1;
         if (sim && !sim.wild.some((w) => w.island.order === 1)) this.spawnIsland1();
         break;
       case 'home':
@@ -561,7 +575,9 @@ export class TutorialCore {
       }
       case 'collect': {
         if (state.carried.length >= this.carryGoal()) this.complete('collect');
-        else if (this.firstCollectAt >= 0 && (this.now - this.firstCollectAt) * 1000 >= TIMING.collectAutoAfterFirstMs) this.complete('collect');
+        else if (state.carried.length > 0 && this.firstCollectAt >= 0 && (this.now - this.firstCollectAt) * 1000 >= TIMING.collectAutoAfterFirstMs) {
+          this.complete('collect');
+        }
         else if (!this.nudged && (this.now - this.lastProgressAt) * 1000 >= TIMING.collectStuckMs && p.mode === 'ground') {
           this.nudged = true;
           this.log.hint('collectStuck');
@@ -571,6 +587,11 @@ export class TutorialCore {
         break;
       }
       case 'home': {
+        // Nothing left to deliver (a real wave took it after the practice wave ended): fetch more first.
+        if (state.carried.length === 0 && sim.splashTime <= 0) {
+          this.enter('collect');
+          break;
+        }
         const d = this.homeDistance(sim, state);
         if (d < this.homeBest - 0.5) {
           this.homeBest = d;
@@ -586,6 +607,12 @@ export class TutorialCore {
         if (inStep * 1000 >= TIMING.earnBannerMs) this.complete('earn');
         break;
       case 'shop':
+        if (state.isMaxed('reach')) {
+          // Replay with a maxed rope: the step teaches buying Rope Reach and could never complete.
+          this.shopDone = true;
+          this.enter(this.waveDone ? 'ready' : 'wave');
+          break;
+        }
         if (inStep * 1000 >= TIMING.shopSpotlightMs && this.panel !== 'shop') this.log.hint('shopSpotlight');
         break;
       case 'ready':
@@ -737,7 +764,7 @@ export class TutorialCore {
     }
     if (this.fail && this.now < this.fail.until) {
       const f = this.fail;
-      return { id: f.id, headline: f.line.headline, sub: f.line.sub, size: 'normal', fail: true, glyph: f.glyph ?? (f.id === 'fail:hold' ? (touch ? 'thumbHold' : 'spaceHold') : 'none') };
+      return { id: f.id, headline: f.line.headline, sub: f.line.sub, size: 'normal', fail: true, glyph: f.glyph ?? (f.id === 'fail:hold' || f.id === 'fail:jump' ? (touch ? 'thumbHold' : 'spaceHold') : 'none') };
     }
     if (this.now < this.splashUntil) {
       return { id: 'splash', headline: COPY.splash.headline, sub: COPY.splash.sub, size: 'normal', fail: false, glyph: 'none' };
@@ -803,7 +830,21 @@ export class TutorialCore {
     };
   }
 
+  /**
+   * Safe for the step-7 pill and arrow: on home or a lighthouse top, or the wall has already gone past. Unlike the
+   * meter it ignores "above the crest", which flips on every high swing (each flip would re-pop the pill).
+   */
+  private safeNow(sim: GameSim): boolean {
+    if (sim.safeSpot()) return true;
+    if (sim.splashTime > 0 || sim.seaRespawnTime > 0 || sim.wave.phase !== 'surge') return false;
+    return !Number.isFinite(sim.wave.timeUntilReaches(sim.player.pos.z));
+  }
+
   private warnPrompt(sim: GameSim, state: GameState): PromptSpec {
+    // Never GET SAFE while the player already stands where the wave cannot reach (the meter says YOU'RE SAFE).
+    if (this.safeNow(sim)) {
+      return { id: 'wave:safe', headline: COPY.waveSafe.headline, sub: COPY.waveSafe.sub, size: 'normal', fail: false, glyph: 'none' };
+    }
     const safe = this.safeTarget(sim, state);
     return {
       id: 'wave:warn',
@@ -811,7 +852,7 @@ export class TutorialCore {
       size: 'normal',
       fail: false,
       glyph: 'none',
-      chip: safe && !sim.playerSafe() ? { icon: safe.icon, text: safe.icon === 'home' ? COPY.etaHome(safe.eta) : COPY.etaPad(safe.eta) } : undefined,
+      chip: safe ? { icon: safe.icon, text: safe.icon === 'home' ? COPY.etaHome(safe.eta) : COPY.etaPad(safe.eta) } : undefined,
     };
   }
 
@@ -874,7 +915,7 @@ export class TutorialCore {
               label: COPY.launch,
             };
           }
-        } else if (!sim.playerSafe()) {
+        } else if (!this.safeNow(sim)) {
           const safe = this.safeTarget(sim, state);
           if (safe) {
             g.arrow = { pos: safe.pos };

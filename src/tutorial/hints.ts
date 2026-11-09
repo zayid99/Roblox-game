@@ -90,9 +90,21 @@ export class Hints {
     const i = this.queue.findIndex((q) => !ctx.surge || q.wave);
     if (i >= 0) {
       const [q] = this.queue.splice(i, 1);
+      if (q.id === 'handsFull') {
+        // It may have waited out a surge: the wave took the creatures, or the player got home meanwhile.
+        if (!this.handsFullNow(sim, state)) {
+          this.handsFullReadyAt = 0; // never shown: the next real case may hint again
+          return prompt;
+        }
+        this.homeArrowUntil = this.t + HINT.homeArrowSec;
+      }
       this.deps.toast(q.spec);
     }
     return prompt;
+  }
+
+  private handsFullNow(sim: GameSim, state: GameState): boolean {
+    return state.carried.length > 0 && state.carried.length >= state.carryCapacity && !sim.isOnHome();
   }
 
   onSimEvent(e: SimEvent, sim: GameSim): void {
@@ -136,6 +148,8 @@ export class Hints {
 
   /** Queues a once-only hint (marked seen when queued, so it can never show twice). */
   private once(id: string, spec: ToastSpec, wave = false): void {
+    // Not during the FTUE: it would be marked seen, then shown out of context after it (or never).
+    if (this.prevStep) return;
     if (this.deps.seen(id) || this.queue.some((q) => q.id === id)) return;
     this.deps.markSeen(id);
     this.queue.push({ id, spec, at: this.t, wave });
@@ -156,11 +170,9 @@ export class Hints {
       }
     }
 
-    const full = state.carried.length > 0 && state.carried.length >= state.carryCapacity && !sim.isOnHome();
-    this.handsFull = full ? this.handsFull + realDt : 0;
-    if (this.handsFull >= HINT.handsFullSec && this.t >= this.handsFullReadyAt) {
+    this.handsFull = this.handsFullNow(sim, state) ? this.handsFull + realDt : 0;
+    if (this.handsFull >= HINT.handsFullSec && this.t >= this.handsFullReadyAt && !this.queue.some((q) => q.id === 'handsFull')) {
       this.handsFullReadyAt = this.t + HINT.handsFullCooldownSec;
-      this.homeArrowUntil = this.t + HINT.homeArrowSec;
       this.queue.push({ id: 'handsFull', spec: { text: COPY.hints.handsFull, kind: 'warn', icon: 'home' }, at: this.t, wave: false });
     }
 

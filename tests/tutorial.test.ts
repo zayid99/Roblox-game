@@ -122,6 +122,37 @@ describe('FTUE bot (§7.5)', () => {
   });
 });
 
+describe('wave step prompt (§7.2 step 7)', () => {
+  it("says YOU'RE SAFE (no ETA chip) at home, WAVE. GET SAFE. with an ETA chip on an island", () => {
+    const seen: { id: string; safe: boolean; chip: boolean }[] = [];
+    runFtueBot({
+      onFrame: (tf, h) => {
+        const id = tf.prompt?.id;
+        if (id === 'wave:warn' || id === 'wave:safe') seen.push({ id, safe: h.sim.safeSpot() === 'home' && h.sim.playerSafe(), chip: !!tf.prompt?.chip });
+      },
+    });
+    // The bot waits at home: the pill must agree with the meter.
+    expect(seen.length).toBeGreaterThan(0);
+    for (const s of seen) expect(s.id).toBe(s.safe ? 'wave:safe' : 'wave:warn');
+    expect(seen.some((s) => s.id === 'wave:safe')).toBe(true);
+    expect(seen.filter((s) => s.id === 'wave:safe').every((s) => !s.chip)).toBe(true);
+
+    // On an island during the warning: GET SAFE with the ETA chip.
+    const state = new GameState();
+    state.ftue.step = 'wave';
+    const h = new FtueHarness({ state });
+    h.frame(1 / 60, NO_INPUT);
+    const isl = h.sim.course.islands[1];
+    h.sim.player.reset(isl.checkpoint.clone());
+    h.sim.wave.setTimer(5);
+    let f = h.frame(1 / 60, NO_INPUT);
+    for (let t = 0; t < 3 && f.prompt?.id !== 'wave:warn'; t += 1 / 60) f = h.frame(1 / 60, NO_INPUT);
+    expect(h.sim.wave.phase).toBe('warning');
+    expect(f.prompt).toMatchObject({ id: 'wave:warn', headline: COPY.waveWarn.headline });
+    expect(f.prompt?.chip).toBeDefined();
+  });
+});
+
 describe('release timing assist (§7.3)', () => {
   /** Grabs the gap-1 hook and never lets go: the window opens on each upswing. */
   function holdForever(seconds: number, h = new FtueHarness()) {
@@ -246,7 +277,30 @@ describe('prompts per device and failures', () => {
       const f = h.frame(1 / 60, input);
       if (f.prompt?.fail) fail = f.prompt;
     }
-    expect(fail).toMatchObject({ id: 'fail:hold', headline: COPY.grabFail.headline, sub: COPY.grabFail.sub, fail: true });
+    expect(fail).toMatchObject({ id: 'fail:hold', headline: COPY.grabFailDesktop.headline, sub: COPY.grabFailDesktop.sub, fail: true, glyph: 'spaceHold' });
+  });
+
+  it('walking off the edge without jumping says JUMP AT THE EDGE, not HOLD IT', () => {
+    for (const device of ['keyboard', 'touch'] as const) {
+      const h = new FtueHarness({ device });
+      const input: PlayerInput = { moveX: 0, moveZ: -1, jumpHeld: false, jumpPressed: false };
+      let fail: PromptSpec | null = null;
+      for (let t = 0; t < 6 && !fail; t += 1 / 60) {
+        const f = h.frame(1 / 60, input);
+        if (f.prompt?.fail) fail = f.prompt;
+      }
+      const line = device === 'touch' ? COPY.jumpFail : COPY.jumpFailDesktop;
+      expect(fail).toMatchObject({ id: 'fail:jump', headline: line.headline, sub: line.sub, fail: true });
+      // After the respawn, a real jump without holding is a HOLD IT again.
+      while (h.sim.seaRespawnTime > 0 || h.sim.player.mode !== 'ground') h.frame(1 / 60, { ...input, moveZ: 0 });
+      fail = null;
+      for (let t = 0; t < 8 && fail?.id !== 'fail:hold'; t += 1 / 60) {
+        input.jumpPressed = h.sim.player.mode === 'ground' && h.sim.player.pos.z < 2.5;
+        const f = h.frame(1 / 60, input);
+        if (f.prompt?.fail) fail = f.prompt;
+      }
+      expect(fail?.id).toBe('fail:hold');
+    }
   });
 
   it('copy has no emoji', () => {
@@ -326,6 +380,50 @@ describe('skip, replay, migration', () => {
     const h = new FtueHarness({ state });
     expect(h.frame(1 / 60, NO_INPUT).active).toBe(false);
     expect(state.ftue.done).toBe(true);
+  });
+
+  it('resuming the interrupted shop step after the wave was survived goes straight to ready after the purchase', () => {
+    const state = new GameState();
+    state.ftue.step = 'shop';
+    state.ftue.rewarded.push('V1', 'V2', 'V4', 'V6');
+    state.cash = 500;
+    const h = new FtueHarness({ state });
+    h.frame(1 / 60, NO_INPUT);
+    h.setPanel('shop');
+    h.frame(1 / 60, NO_INPUT);
+    expect(state.buyMany('reach', 1)).toBe(1);
+    h.core.onUi({ type: 'buy', key: 'reach' });
+    expect(h.frame(1 / 60, NO_INPUT).step).toBe('ready');
+  });
+
+  it('home step with nothing left to deliver goes back to collect (no ping-pong)', () => {
+    const state = new GameState();
+    state.ftue.step = 'collect';
+    const h = new FtueHarness({ state });
+    h.frame(1 / 60, NO_INPUT);
+    const isl = h.sim.course.islands.find((i) => i.order === 1)!;
+    h.sim.player.reset(isl.solid.max.clone().setX((isl.solid.min.x + isl.solid.max.x) / 2).setZ(isl.solid.min.z + 1));
+    // Collected one, then the 8 s auto-complete: on to home.
+    h.core.onSimEvent({ type: 'collect', creature: { ...h.sim.wild[0] }, isNewSpecies: true, isNewMutation: true }, h.sim);
+    state.carried = [{ speciesId: 'toastopus', mutation: 0 }];
+    for (let t = 0; t < 9 && h.core.step === 'collect'; t += 1 / 60) h.frame(1 / 60, NO_INPUT);
+    expect(h.core.step).toBe('home');
+    // A real wave takes them: back to collect, and it stays there (no 8 s auto-complete with empty hands).
+    state.carried = [];
+    const steps: (string | null)[] = [];
+    for (let t = 0; t < 10; t += 1 / 60) steps.push(h.frame(1 / 60, NO_INPUT).step);
+    expect(steps.every((s) => s === 'collect')).toBe(true);
+    expect(h.commands.filter((c) => c.type === 'setWaveTimer').length).toBe(1);
+  });
+
+  it('replay with Rope Reach maxed does not get stuck on BUY ROPE REACH', () => {
+    const first = runFtueBot();
+    const h = first.harness;
+    h.state.levels.reach = 14;
+    h.core.replay();
+    const again = playFtue(h);
+    expect(again.done).toBe(true);
+    expect(h.stepAt.shop).toBeDefined();
   });
 
   it('resumes a saved step where the player can continue', () => {

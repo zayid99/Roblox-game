@@ -323,6 +323,9 @@ export function generateCourse(seed = 20261105): Course {
         };
         pads.push(pad);
         lighthouses.push({ id: nextId++, zone: zi, tower, platform, pad });
+        // The island centre can sit on the launch pad (wide islands) or beside the tower: respawn at the
+        // home-facing end instead, so a sea fall here does not throw the player up the lighthouse.
+        island.checkpoint.z = maxZ - 1.6;
         blocked.push(
           { x0: towerX - 2.6, x1: towerX + 2.6, z0: towerZ - 2.6, z1: towerZ + 2.6 },
           { x0: padX - 2, x1: padX + 2, z0: towerZ - 2, z1: towerZ + 2 },

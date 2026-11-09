@@ -20,6 +20,10 @@ export const COPY = {
   grabDesktop: { headline: 'RUN + JUMP + HOLD', sub: 'Hold to grab the hook' } as Line,
   grabTouch: { headline: 'RUN + HOLD JUMP', sub: 'Hold to grab the hook' } as Line,
   grabFail: { headline: 'HOLD IT', sub: 'Keep holding JUMP' } as Line,
+  grabFailDesktop: { headline: 'HOLD IT', sub: 'Keep holding SPACE' } as Line,
+  /** Sea fall without any jump (walked off the edge). */
+  jumpFail: { headline: 'JUMP AT THE EDGE', sub: 'Then hold JUMP to grab' } as Line,
+  jumpFailDesktop: { headline: 'JUMP AT THE EDGE', sub: 'Then hold SPACE to grab' } as Line,
   jumpHere: 'JUMP HERE',
   hookTag: 'HOLD',
 
@@ -54,6 +58,8 @@ export const COPY = {
   // Step 7 `wave`
   wave: { headline: 'GRAB MORE, BEAT THE WAVE' } as Line,
   waveWarn: { headline: 'WAVE. GET SAFE.' } as Line,
+  /** The wave is coming but the player already stands somewhere it cannot reach (matches the meter). */
+  waveSafe: { headline: "YOU'RE SAFE", sub: 'Stay here till the wave passes' } as Line,
   etaPad: (s: number) => `Pad ${Math.max(0, Math.ceil(s))} s`,
   etaHome: (s: number) => `Home ${Math.max(0, Math.ceil(s))} s`,
   launch: 'LAUNCH',
