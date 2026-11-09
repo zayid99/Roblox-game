@@ -310,7 +310,8 @@ export class Guides {
         this.tag.material.needsUpdate = true;
       }
       this.tag.visible = true;
-      this.tag.position.copy(v).setY(v.y + 4.6 + 0.15 * Math.sin(time * 4));
+      // Under the hook: from the FTUE spawn the hook sits at the top edge of the view, so a tag above it is off-screen.
+      this.tag.position.copy(v).setY(v.y - 2.3 + 0.15 * Math.sin(time * 4));
     } else this.tag.visible = false;
 
     // Dashed predicted-landing ring.

@@ -14,6 +14,7 @@
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --st: max(12px, calc(env(safe-area-inset-top) + 8px));
   --sr: max(12px, calc(env(safe-area-inset-right) + 8px));
+  --sb: max(12px, calc(env(safe-area-inset-bottom) + 8px));
 
   position: absolute; inset: 0; pointer-events: none;  /* no z-index: children join the #ui stacking order */
   font-family: var(--body); color: var(--text-ink);
@@ -39,6 +40,11 @@ html.no-po .tut-t { -webkit-text-stroke: 0; text-shadow: 2px 0 0 var(--ink), -2p
 .tut[data-layout="landscape"] .tut-pill-wrap { top: 74px; }
 .tut[data-layout="portrait"] .tut-pill-wrap { top: calc(var(--st) + 184px); width: 92vw; max-width: 92vw; }
 .tut-pill-wrap.is-on { opacity: 1; transition-duration: 0ms; }
+/* Rope steps (grab, release): the hook and rope fill the top centre, so the pill sits just above the
+   carry hotbar instead, under the character's feet. */
+.tut-pill-wrap.is-low { top: auto; bottom: 108px; }
+.tut[data-layout="landscape"] .tut-pill-wrap.is-low { top: auto; bottom: calc(var(--sb) + 64px); }
+.tut[data-layout="portrait"] .tut-pill-wrap.is-low { top: auto; bottom: calc(var(--sb) + 214px); }
 .tut-pill-wrap.is-instant { transition: none; }
 
 .tut-pill {
@@ -181,9 +187,14 @@ html.no-po .tut-t { -webkit-text-stroke: 0; text-shadow: 2px 0 0 var(--ink), -2p
 /* ---------------------------------------------------------------- skip link (C1 tertiary) */
 .tut-skip {
   position: fixed; right: 16px; top: 76px; z-index: var(--z-hud-top, 20);
-  min-width: 48px; min-height: 48px; padding: 0 6px; border: 0; background: none; cursor: pointer;
+  min-width: 48px; min-height: 48px; padding: 0 14px; border: 0; background: none; cursor: pointer;
   font: 600 15px/48px var(--body); color: #fff; text-shadow: 0 2px 0 var(--ink);
   opacity: 0; visibility: hidden; transition: opacity 200ms; pointer-events: auto;
+}
+/* A dark backing pill keeps the white link readable over bright sky, foam and signs (hit area stays 48 tall). */
+.tut-skip::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 8px; bottom: 8px; z-index: -1;
+  border-radius: 999px; background: rgba(11, 39, 64, .62);
 }
 .tut-skip.is-on { opacity: 1; visibility: visible; }
 .tut-skip:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; border-radius: 8px; }

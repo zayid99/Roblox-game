@@ -28,6 +28,8 @@ export interface TutorialOverlayDeps {
 
 const CHECK_MS = 360; // check stamp 200 ms + exit 160 ms
 const STAMP_MS = 1000;
+/** Rope steps: the hook (and the rope above the player) fills the top centre, so the pill sits low instead. */
+const LOW_STEPS: ReadonlySet<string> = new Set(['grab', 'release']);
 
 function layoutOf(w: number, h: number): 'desktop' | 'landscape' | 'portrait' {
   if (h > w) return 'portrait';
@@ -48,6 +50,14 @@ function setText(el: HTMLElement, text: string): void {
     el.textContent = text;
     el.dataset.text = text;
   }
+}
+
+function place(el: HTMLElement, x: number, y: number, w: number, h: number): void {
+  const s = el.style;
+  s.left = `${x}px`;
+  s.top = `${y}px`;
+  s.width = `${w}px`;
+  s.height = `${h}px`;
 }
 
 function restart(el: HTMLElement, cls: string): void {
@@ -131,7 +141,9 @@ export class TutorialOverlay {
   render(f: TutorialFrame, realDt: number): void {
     const ms = realDt * 1000;
     const el = this.el;
-    el.dataset.layout = layoutOf(innerWidth, innerHeight);
+    // Attribute writes invalidate style even with an unchanged value: write only on change (every frame).
+    const layout = layoutOf(innerWidth, innerHeight);
+    if (el.dataset.layout !== layout) el.dataset.layout = layout;
     el.classList.toggle('tut--rm', !!this.deps.reduceMotion?.());
 
     // Slow-mo sound twins.
@@ -196,6 +208,8 @@ export class TutorialOverlay {
     if (p.id !== this.shownId) {
       this.shownId = p.id;
       this.shownGlyphKey = '';
+      // Placed when a prompt appears, so a pill never jumps while it is on screen.
+      this.pillWrap.classList.toggle('is-low', f.step !== null && LOW_STEPS.has(f.step));
       this.pillWrap.classList.add('is-on');
       restart(this.pill, 'is-pop');
       this.deps.sound('tutorialStep');
@@ -212,23 +226,23 @@ export class TutorialOverlay {
 
   private fillPill(p: PromptSpec, f: TutorialFrame): void {
     const pill = this.pill;
-    pill.dataset.size = p.size;
+    if (pill.dataset.size !== p.size) pill.dataset.size = p.size;
     if (pill.classList.contains('is-fail') !== p.fail) {
       pill.classList.toggle('is-fail', p.fail);
       if (p.fail) restart(pill, 'is-shake');
     }
     setText(this.head, p.headline);
     setText(this.sub, p.sub ?? '');
-    this.sub.hidden = !p.sub;
+    if (this.sub.hidden !== !p.sub) this.sub.hidden = !p.sub;
     if (p.chip) {
-      this.chip.hidden = false;
+      if (this.chip.hidden) this.chip.hidden = false;
       const key = `${p.chip.icon}|${p.chip.text}`;
       if (this.chip.dataset.key !== key) {
         this.chip.dataset.key = key;
         this.chip.innerHTML = `${this.icon(p.chip.icon, 22)}<span></span>`;
         (this.chip.lastChild as HTMLElement).textContent = p.chip.text;
       }
-    } else this.chip.hidden = true;
+    } else if (!this.chip.hidden) this.chip.hidden = true;
 
     const glyphKey = `${p.id}|${p.glyph}|${p.portrait ?? ''}`;
     if (glyphKey !== this.shownGlyphKey) {
@@ -323,12 +337,8 @@ export class TutorialOverlay {
       this.el.classList.toggle('tut--spot-panel', inPanel);
       this.hand.classList.toggle('has-key', id === 'rail:shop' && this.device(f) !== 'touch');
     }
-    for (const s of [this.spot, this.spotRing]) {
-      s.style.left = `${x}px`;
-      s.style.top = `${y}px`;
-      s.style.width = `${w}px`;
-      s.style.height = `${h}px`;
-    }
+    place(this.spot, x, y, w, h);
+    place(this.spotRing, x, y, w, h);
     this.hand.style.left = `${x + w - 18}px`;
     this.hand.style.top = `${y + h - 18}px`;
   }
