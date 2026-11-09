@@ -168,15 +168,17 @@ export class BoxBuilder {
   /** Appends another builder's boxes (keeps its outline records). */
   merge(other: BoxBuilder): this {
     const base = this.vertexCount;
-    this.positions.push(...other.positions);
-    this.normals.push(...other.normals);
-    this.colors.push(...other.colors);
-    this.face.push(...other.face);
-    this.eye.push(...other.eye);
-    this.skin.push(...other.skin);
+    // Loops, not push(...arr): spreading a big builder (> 65 536 numbers, ~900 boxes) throws a RangeError on
+    // Safari/JavaScriptCore, whose argument limit is that low.
+    append(this.positions, other.positions);
+    append(this.normals, other.normals);
+    append(this.colors, other.colors);
+    append(this.face, other.face);
+    append(this.eye, other.eye);
+    append(this.skin, other.skin);
     for (const i of other.indices) this.indices.push(i + base);
-    this.records.push(...other.records);
-    this.meshes.push(...other.meshes);
+    append(this.records, other.records);
+    append(this.meshes, other.meshes);
     this.hasEye ||= other.hasEye;
     this.hasBone ||= other.hasBone;
     return this;
@@ -225,6 +227,10 @@ function grownHull(geo: BufferGeometry, grow: number, matrix?: Matrix4): BufferG
   for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + n.getX(i) * grow, p.getY(i) + n.getY(i) * grow, p.getZ(i) + n.getZ(i) * grow);
   src.dispose();
   return welded;
+}
+
+function append<T>(into: T[], from: readonly T[]): void {
+  for (let i = 0; i < from.length; i++) into.push(from[i]);
 }
 
 function addSkin(g: BufferGeometry, bones: number[]): void {
