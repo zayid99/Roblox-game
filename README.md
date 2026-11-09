@@ -80,7 +80,7 @@ npm run build
 - `dist/` is the folder to zip and upload in the CrazyGames developer portal. All paths are relative; the game is one JS file of about 310 KB gzipped plus 19 KB of CSS (fonts are inlined; the mobile homepage limit is 20 MB).
 - `dist-single/index.html` is the same game as one self-contained file. The `?sandbox` pages are separate chunks and only work from `dist/`.
 
-Basic Launch doesn't need the CrazyGames SDK. For Full Launch, uncomment the SDK script tag in `index.html`. `src/platform/crazygames.ts` then uses it for the lifecycle events, ads, the mute setting and cloud saves, and falls back to localStorage without it. Ads are only offered when the SDK is present.
+The same build works for Basic and Full Launch. When the game runs on a CrazyGames domain, `src/platform/crazygames.ts` loads the CrazyGames SDK v3 at boot and uses it for the lifecycle events, ads, the mute setting and cloud saves. Anywhere else nothing external is loaded and the game falls back to localStorage, without ads. `?sdk` forces the SDK load (for testing with the SDK's local mode on localhost) and `?nosdk` skips it.
 
 ## Tests
 
