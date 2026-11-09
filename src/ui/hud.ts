@@ -262,6 +262,7 @@ export class Hud {
     this.carry.update(v.carried, v.capacity, v.tripBonusPct, reduce);
     this.chain.update(v.chain, reduce);
     this.reticle.update(v.reticle, reduce);
+    this.reticle.el.classList.toggle('under-hud', !!v.reticle && this.underTopBand(v.reticle.x, v.reticle.y));
     this.edge.update(v.edgeArrow, window.innerWidth, window.innerHeight);
     this.touchPart.update(v);
     this.toasts.update(realDt);
@@ -278,6 +279,18 @@ export class Hud {
   /** A centre banner is showing (floats that would land on it are skipped). */
   get bannerUp(): boolean {
     return this.root.classList.contains('banner-up');
+  }
+
+  private topBand = { l: 0, r: 0, b: 0, at: -1e9 };
+  /** True when a screen point sits behind the wave meter / course bar (rect re-read at most twice a second). */
+  private underTopBand(x: number, y: number): boolean {
+    if (y > 260) return false;
+    const now = performance.now();
+    if (now - this.topBand.at > 500) {
+      const r = this.topCenter.getBoundingClientRect();
+      this.topBand = { l: r.left, r: r.right, b: r.bottom, at: now };
+    }
+    return y < this.topBand.b + 28 && x > this.topBand.l - 28 && x < this.topBand.r + 28;
   }
 
   private mouseHint: HTMLElement | null = null;

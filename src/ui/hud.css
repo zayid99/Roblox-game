@@ -159,6 +159,8 @@
 
 /* ---------------- Reticle and edge arrow ---------------- */
 .reticle { position: absolute; left: 0; top: 0; width: 0; height: 0; transition: opacity 120ms; }
+/* A hook behind the wave meter: keep the aim faint so the timer stays readable. */
+.reticle.under-hud { opacity: .28; }
 .reticle .rt-hook, .reticle .rt-ring { position: absolute; display: none; }
 .reticle[data-kind="hook"] .rt-hook, .reticle[data-kind="release"] .rt-ring { display: block; }
 .rt-hook { left: -28px; top: -28px; width: 56px; height: 56px; }
