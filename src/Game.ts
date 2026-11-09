@@ -78,6 +78,8 @@ export class Game {
   private gestured = false;
   private resumeShown = false;
   private adPlaying = false;
+  /** An ad was requested and has not finished: the game stays paused (gameplayStop) until it does. */
+  private adPending = false;
   private hiddenAt = 0;
   private lastAdAt = 0;
   private lastCountdown = 0;
@@ -379,7 +381,7 @@ export class Game {
 
   /** Pause = panel open, resume overlay, ad, or hidden tab. Only the sim stops (§10.7). */
   private syncPause(): void {
-    const paused = this.hud.openPanelKind !== null || this.resumeShown || this.adPlaying || document.hidden;
+    const paused = this.hud.openPanelKind !== null || this.resumeShown || this.adPlaying || this.adPending || document.hidden;
     this.input.setEnabled(!paused);
     if (paused === this.paused) return;
     this.paused = paused;
@@ -392,25 +394,45 @@ export class Game {
     }
   }
 
+  /**
+   * Requests an ad. The game pauses (gameplayStop) from the request until the ad is done, so a
+   * panel that closes to start the ad (Welcome x2) never resumes play in between. Only one ad at a
+   * time: a second request while one is in flight is answered "not rewarded" right away. If the SDK
+   * neither starts nor finishes the ad within 10 s, play resumes without it.
+   */
   private runAd(type: 'midgame' | 'rewarded', done: (rewarded: boolean) => void): void {
-    if (!this.platform.hasSdk) {
+    if (!this.platform.hasSdk || this.adPending || this.adPlaying) {
       done(false);
       return;
     }
     this.lastAdAt = performance.now();
+    this.adPending = true;
+    this.syncPause();
+    let settled = false;
+    const finish = (rewarded: boolean) => {
+      if (settled) return;
+      settled = true;
+      this.adPending = false;
+      this.syncPause();
+      done(rewarded);
+    };
+    const guard = window.setTimeout(() => {
+      if (!this.adPlaying) finish(false);
+    }, 10_000);
     this.platform.requestAd(type, {
       onStart: () => {
+        window.clearTimeout(guard);
         this.adPlaying = true;
         this.audio.setAdPlaying(true);
         this.syncPause();
       },
       onDone: (rewarded) => {
+        window.clearTimeout(guard);
         const wasPlaying = this.adPlaying;
         this.adPlaying = false;
         this.audio.setAdPlaying(false);
         if (wasPlaying) this.showResume();
-        else this.syncPause();
-        done(rewarded);
+        finish(rewarded);
       },
     });
   }
@@ -556,7 +578,8 @@ export class Game {
     const pearls = out.pearls ?? 0;
     // The reveal card opens after the panel's wobble and crack (panels/hatchery.ts timings).
     window.setTimeout(() => {
-      this.audio.play('reveal', { rarity });
+      // The reveal only plays if the Hatchery is still open (closing it mid-hatch skips the card).
+      if (this.hud.openPanelKind === 'hatchery') this.audio.play('reveal', { rarity });
       // hatchEgg already paid the first-discovery Pearls; say so with the reveal.
       if (pearls > 0) this.hud.toast({ text: `New species: +${pearls} Pearls`, kind: 'good', icon: 'pearl' });
     }, this.reduceMotion ? 630 : 2170);
