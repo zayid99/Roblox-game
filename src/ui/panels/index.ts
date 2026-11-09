@@ -7,6 +7,7 @@ import { el, escapeHtml, pressable, replay } from '../dom';
 import { icon } from '../icons';
 import { mutationGem, shapeCue } from '../parts/carry';
 import { rarityPill } from '../reveal';
+import { fillPortraits, portraitSlot } from '../types';
 import type { PanelContent, PanelShell } from './panel';
 import type { PanelEnv } from './env';
 
@@ -15,8 +16,7 @@ const GEM_COLORS = ['#FFFFFF', 'var(--mut-gold)', 'var(--mut-diamond)', '#FF6BF2
 export function itemCard(env: PanelEnv, e: IndexEntry, found: boolean): HTMLElement {
   const r = e.rarity;
   const ref: CreatureRef = { speciesId: e.id, mutation: 0 };
-  const src = env.deps.portraits.get(ref);
-  if (!src) env.deps.portraits.request(ref);
+  const ph = portraitSlot(env.deps, ref);
   const card = el('div', `card-item${found ? '' : ' unknown'}${r >= 3 ? ' notch' : ''}${r === 5 && found ? ' glow-pulse' : ''}`);
   card.dataset.r = String(r);
   card.dataset.id = e.id;
@@ -25,7 +25,7 @@ export function itemCard(env: PanelEnv, e: IndexEntry, found: boolean): HTMLElem
     (found && r >= 4 ? '<span class="sunburst"></span><span class="shine-sweep"></span>' : '') +
     shapeCue(r) +
     (found ? `<span class="ci-inc t-stroke">+${formatIncome(e.income)}</span>` : '') +
-    porthole(src ? `<img src="${src}" alt="" draggable="false">` : '', 96, src ? '' : 'pending') +
+    porthole(ph.html, 96, ph.pending ? 'pending' : '') +
     `<span class="ci-name t-stroke">${found ? escapeHtml(e.name) : '???'}</span>` +
     (found ? `<span class="gems">${gems}</span>` : `<span class="hint">Found in ${escapeHtml(e.foundIn)}</span>`) +
     rarityPill(r) +
@@ -41,6 +41,8 @@ export function itemCard(env: PanelEnv, e: IndexEntry, found: boolean): HTMLElem
 
 export class IndexPanel implements PanelContent {
   readonly tab = null;
+  /** Cancels the portrait fill-in poll (a cold open requests all 35 portraits at once). */
+  private stopFill: () => void = () => {};
 
   constructor(private readonly shell: PanelShell, private readonly env: PanelEnv) {
     this.refresh();
@@ -51,7 +53,7 @@ export class IndexPanel implements PanelContent {
     const feat = v.featured ? v.entries.find((e) => e.id === v.featured) : null;
     this.shell.head.innerHTML =
       `<div class="ix-count"><span class="t-stroke ix-num">${v.found}/${v.total} FOUND</span><div class="bar bar--grape"><div class="fill" style="transform:scaleX(${v.total ? v.found / v.total : 0})"></div></div></div>` +
-      (feat ? `<div class="ix-feat">${porthole(this.portrait(feat.id), 44)}<span>Featured this week<b class="t-d">${escapeHtml(feat.name)}</b></span></div>` : '');
+      (feat ? `<div class="ix-feat">${this.portrait(feat.id)}<span>Featured this week<b class="t-d">${escapeHtml(feat.name)}</b></span></div>` : '');
     this.shell.body.innerHTML = '';
     const well = el('div', 'well ix-well');
     const list = el('div', 'ix-rows stagger');
@@ -78,13 +80,17 @@ export class IndexPanel implements PanelContent {
     }
     well.appendChild(list);
     this.shell.body.appendChild(well);
+    this.stopFill();
+    this.stopFill = fillPortraits(this.env.deps, this.shell.el);
   }
 
   private portrait(id: string): string {
-    const ref = { speciesId: id, mutation: 0 };
-    const src = this.env.deps.portraits.get(ref);
-    if (!src) this.env.deps.portraits.request(ref);
-    return src ? `<img src="${src}" alt="">` : '';
+    const ph = portraitSlot(this.env.deps, { speciesId: id, mutation: 0 });
+    return porthole(ph.html, 44, ph.pending ? 'pending' : '');
+  }
+
+  destroy(): void {
+    this.stopFill();
   }
 }
 
