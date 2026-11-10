@@ -414,12 +414,27 @@ const DEFS: Record<IconId, IconDef> = {
 
 export const ICON_IDS = Object.keys(DEFS) as IconId[];
 
+// Painted icons (assets/icons/*.png, shrunk to 160 px WebP in ./icons-img). They replace the drawn
+// icon of the same id. The gem stays drawn: its colour shows the mutation (currentColor).
+const PAINTED = import.meta.glob('./icons-img/*.webp', { eager: true, import: 'default' }) as Record<string, string>;
+const KEEP_DRAWN = new Set<IconId>(['gem']);
+function painted(id: IconId): string | null {
+  if (KEEP_DRAWN.has(id)) return null;
+  return PAINTED[`./icons-img/${id}.webp`] ?? null;
+}
+/** The painted image fills a bit more than the 48 box, like the drawn icons with their drop shadow. */
+function paintedMarkup(src: string): string {
+  return `<image href="${src}" x="-3" y="-3" width="54" height="54" preserveAspectRatio="xMidYMid meet"/>`;
+}
+
 function isStroke(p: Part | Stroke): p is Stroke {
   return (p as Stroke).stroke !== undefined;
 }
 
 /** Inner markup of one icon (viewBox 0 0 48 48). `uid` keeps ids unique per document. */
 function build(id: IconId, uid: string): string {
+  const img = painted(id);
+  if (img) return paintedMarkup(img);
   const def = DEFS[id];
   let defs = '';
   let body = '';
