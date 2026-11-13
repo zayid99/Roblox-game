@@ -88,7 +88,10 @@ describe('First Voyage', () => {
     expect(state.pearls).toBe(5 + 10 + 25);
     expect(log).toContainEqual({ type: 'voyageDone' });
     expect(log).toContainEqual({ type: 'unlock', what: 'locker' });
-    expect(p.tracker()).toBeNull();
+    // The Voyage is over; the tracker keeps showing the next zone to unlock.
+    expect(p.tracker()).toEqual(expect.objectContaining({ title: 'NEXT GOAL' }));
+    expect(p.tracker()!.rows).toHaveLength(1);
+    expect(p.tracker()!.rows[0].text).toMatch(/Unlock |Buy Rope Reach/);
     frame();
     expect(state.voyage.step).toBe(12);
   });

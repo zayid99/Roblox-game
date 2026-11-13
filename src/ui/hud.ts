@@ -263,7 +263,8 @@ export class Hud {
     this.chain.update(v.chain, reduce);
     this.reticle.update(v.reticle, reduce);
     this.reticle.el.classList.toggle('under-hud', !!v.reticle && this.underTopBand(v.reticle.x, v.reticle.y));
-    this.edge.update(v.edgeArrow, window.innerWidth, window.innerHeight);
+    const mode = this.watcher.mode;
+    this.edge.update(v.edgeArrow, window.innerWidth, window.innerHeight, mode === 'portrait' ? 290 : v.touch ? 150 : 120);
     this.touchPart.update(v);
     this.toasts.update(realDt);
     this.banners.update(realDt);

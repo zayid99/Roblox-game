@@ -7,6 +7,7 @@ import type {
 import { tripBonusPct } from '../game/combo';
 import { HOME_FRONT_Z } from '../game/config';
 import { getSpecies } from '../game/creatures';
+import { guideTarget } from '../game/guide';
 import { nearbyLockedAnchor } from '../game/player';
 import type { Progression } from '../game/progression';
 import type { GameSim } from '../game/sim';
@@ -106,6 +107,8 @@ export function buildHudView(i: HudViewInput): HudView {
     const home = sim.course.homeSpawn;
     target = { pos: home, icon: 'home', label: `${Math.round(Math.hypot(home.x - p.pos.x, home.z - p.pos.z))} m` };
   }
+  // After the tutorial: where a new player should head next (creatures, home, or safety from the wave).
+  if (!target && tf.step === null) target = guideTarget(sim, state);
 
   const vigTutorial = tf.vignette;
   let vignette: HudView['vignette'] = { kind: 'none', strength: 0 };

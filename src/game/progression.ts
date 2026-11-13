@@ -2,7 +2,7 @@ import { dayKey, formatClock, hashKey, msUntilNextDay, systemClock, weekKey, typ
 import { buyCosmetic, equipCosmetic, lockerItems, markCosmeticSeen } from './cosmetics';
 import { RARITIES, SPECIES } from './creatures';
 import { WEEKLY_ROPES, claimedToday, dailyClaimable, dailySpec, nextDailyDay, recordDailyClaim } from './daily';
-import { cheapestUpgradeCost, offlineEarnings, rebirthCost } from './economy';
+import { cheapestUpgradeCost, formatCash, offlineEarnings, reachGateLevel, rebirthCost } from './economy';
 import { featuredSpeciesFor } from './featured';
 import { GIFTS, giftState, readyGifts, rolloverGifts, secondsToNextGift } from './gifts';
 import { rollStatsDay, trackSimEvent } from './progress';
@@ -23,6 +23,7 @@ import type {
   RailTileState,
   Reward,
   SimEvent,
+  TrackerRow,
   TrackerView,
   WelcomeView,
 } from '../contracts';
@@ -448,14 +449,32 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
 
   /** First Voyage tracker (C16): the current quest; null during the FTUE and after the Voyage. */
   tracker(): TrackerView | null {
+    if (!this.ftueDone) return null;
     const q = currentQuest(this.state);
-    if (!q || !this.ftueDone) return null;
+    const goal = this.nextZoneGoal();
+    if (!q) return goal ? { title: 'NEXT GOAL', count: '', rows: [goal] } : null;
     const reward = q.ftue && this.state.ftue.rewarded.includes(voyageRewardKey(q.n)) ? {} : resolveReward(this.state, q.reward, new Rng(0));
-    return {
-      title: 'FIRST VOYAGE',
-      count: `${q.n}/${VOYAGE_LENGTH}`,
-      rows: [{ icon: q.icon, text: q.text, progress: q.progress(this.state), reward, done: false }],
-    };
+    const rows: TrackerRow[] = [{ icon: q.icon, text: q.text, progress: q.progress(this.state), reward, done: false }];
+    if (goal) rows.push(goal);
+    return { title: 'FIRST VOYAGE', count: `${q.n}/${VOYAGE_LENGTH}`, rows };
+  }
+
+  /**
+   * Tracker row for the next locked zone: "Unlock Lagoon: $20K", with the bar filling as cash is saved for the
+   * Rope Reach levels its gate needs. Null once every zone is open.
+   */
+  nextZoneGoal(): TrackerRow | null {
+    const s = this.state;
+    for (let z = 1; z < ZONES.length; z++) {
+      const gate = reachGateLevel(z);
+      if (!Number.isFinite(gate) || s.levels.reach >= gate) continue;
+      const cost = s.bulkCost('reach', gate - s.levels.reach);
+      if (!(cost > 0)) return null;
+      const progress = Math.max(0, Math.min(1, s.cash / cost));
+      const text = progress >= 1 ? `Buy Rope Reach to unlock ${ZONES[z].name}` : `Unlock ${ZONES[z].name}: ${formatCash(cost)}`;
+      return { icon: 'reach', text, progress, reward: {}, done: false };
+    }
+    return null;
   }
 
   // ---------- Panels ----------

@@ -80,7 +80,8 @@ export class EdgeArrowPart {
     this.chip = this.el.querySelector('.eg-chip') as HTMLElement;
   }
 
-  update(e: HudView['edgeArrow'], w: number, h: number): void {
+  /** @param bottomReserve px at the bottom kept clear (carry hotbar, joystick, jump button). */
+  update(e: HudView['edgeArrow'], w: number, h: number, bottomReserve = 0): void {
     const on = !!e;
     if (on !== this.last.on) {
       this.last.on = on;
@@ -105,7 +106,7 @@ export class EdgeArrowPart {
     if (dx === 0 && dy === 0) dx = 1;
     const k = 1 / Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
     const x = cx + dx * Math.min(1, k);
-    const y = cy + dy * Math.min(1, k);
+    const y = Math.min(cy + dy * Math.min(1, k), Math.max(cy, h - bottomReserve));
     const a = e.angle;
     if (Math.abs(x - this.last.x) > 0.5 || Math.abs(y - this.last.y) > 0.5 || Math.abs(a - this.last.a) > 0.005) {
       this.last.x = x;
