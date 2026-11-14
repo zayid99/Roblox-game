@@ -45,15 +45,61 @@ export const TIERS: Record<QualityTier, TierParams> = {
   },
 };
 
-/** Default tier for this device: Medium on touch-first devices, High otherwise. */
-export function defaultTier(): QualityTier {
-  const coarse = typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
-  return coarse ? 'medium' : 'high';
+/** What the browser tells us about the device (any field may be unknown). */
+export interface DeviceHints {
+  /** Touch-first device (phone or tablet). */
+  coarse: boolean;
+  /** navigator.deviceMemory in GB (Chromium only), or null. */
+  memoryGb: number | null;
+  /** navigator.hardwareConcurrency, or null. */
+  cores: number | null;
+  /** WebGL renderer string (unmasked when the browser allows it), or ''. */
+  gpu: string;
+  userAgent: string;
 }
 
-export function resolveTier(q: QualitySetting, autoTier: QualityTier | null): QualityTier {
+const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|basic render/i;
+const STRONG_GPU = /nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|radeon\(tm\) rx|apple m\d|apple gpu|intel\(r\) arc|\barc\(tm\)/i;
+
+/**
+ * Starting tier for a device. The first minute decides whether a player stays, so it starts on a tier the
+ * device is likely to run smoothly: High only with a clearly strong GPU, Low on weak or software-rendered
+ * machines (school Chromebooks, old laptops, budget phones), Medium otherwise. The runtime check
+ * (DprController.pendingTier) lowers it further within seconds if frames are still slow.
+ */
+export function tierForDevice(h: DeviceHints): QualityTier {
+  if (SOFTWARE_GPU.test(h.gpu)) return 'low';
+  const mem = h.memoryGb;
+  const cores = h.cores;
+  if ((mem !== null && mem <= 2) || (cores !== null && cores <= 2)) return 'low';
+  if (h.coarse) return (mem !== null && mem <= 3) || (cores !== null && cores <= 4) ? 'low' : 'medium';
+  const chromebook = /\bCrOS\b/.test(h.userAgent);
+  if (chromebook) return mem !== null && mem <= 4 ? 'low' : 'medium';
+  const weak = (mem !== null && mem <= 4) || (cores !== null && cores <= 4);
+  if (STRONG_GPU.test(h.gpu) && !weak) return 'high';
+  return 'medium';
+}
+
+export function readDeviceHints(gpu = ''): DeviceHints {
+  const nav = (typeof navigator !== 'undefined' ? navigator : {}) as Navigator & { deviceMemory?: number };
+  const coarse = typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
+  return {
+    coarse,
+    memoryGb: typeof nav.deviceMemory === 'number' ? nav.deviceMemory : null,
+    cores: typeof nav.hardwareConcurrency === 'number' ? nav.hardwareConcurrency : null,
+    gpu,
+    userAgent: nav.userAgent ?? '',
+  };
+}
+
+/** Default tier for this device (see tierForDevice). `gpu` is the WebGL renderer string, when known. */
+export function defaultTier(gpu = ''): QualityTier {
+  return tierForDevice(readDeviceHints(gpu));
+}
+
+export function resolveTier(q: QualitySetting, autoTier: QualityTier | null, gpu = ''): QualityTier {
   if (q !== 'auto') return q;
-  return autoTier ?? defaultTier();
+  return autoTier ?? defaultTier(gpu);
 }
 
 const LOWER: Record<QualityTier, QualityTier | null> = { high: 'medium', medium: 'low', low: null };
@@ -88,7 +134,9 @@ const GOOD_MS = 17.5;
  * > 18 ms lowers DPR by .25 (floor .75), at most one change every 2 s. Keeping up with the screen (≤ 17.5 ms,
  * reachable at 60 Hz) for 6 s raises it again; a drop soon after a raise doubles that wait (up to 96 s),
  * so a device on the edge settles instead of flip-flopping.
- * Stuck at the floor for 10 s and still > 20 ms: suggest the next lower tier for the next load.
+ * Stuck at the floor for 4 s and still > 20 ms, or under ~30 fps (> 34 ms) for 4 s at any DPR: `pendingTier`
+ * names the next lower tier. The renderer applies it in the same session (a new player on a slow machine
+ * should not spend their first minutes at a low frame rate) and it is saved for the next load.
  */
 export class DprController {
   dpr: number;
@@ -98,6 +146,7 @@ export class DprController {
   private sinceChange = 0;
   private goodFor = 0;
   private floorFor = 0;
+  private slowFor = 0;
   private raiseWait = 6;
   private lastWasRaise = false;
 
@@ -113,7 +162,8 @@ export class DprController {
     this.cap = cap;
     this.tier = tier;
     this.dpr = cap;
-    this.windowMs = this.windowFrames = this.sinceChange = this.goodFor = this.floorFor = 0;
+    this.windowMs = this.windowFrames = this.sinceChange = this.goodFor = this.floorFor = this.slowFor = 0;
+    this.pendingTier = null;
     this.raiseWait = 6;
     this.lastWasRaise = false;
   }
@@ -131,8 +181,12 @@ export class DprController {
     const floor = 0.75;
     if (this.dpr <= floor + 1e-3 && avg > 20) {
       this.floorFor += span;
-      if (this.auto && this.floorFor >= 10 && !this.pendingTier) this.pendingTier = LOWER[this.tier];
+      if (this.auto && this.floorFor >= 4 && !this.pendingTier) this.pendingTier = LOWER[this.tier];
     } else this.floorFor = 0;
+    if (avg > 34) {
+      this.slowFor += span;
+      if (this.auto && this.slowFor >= 4 && !this.pendingTier) this.pendingTier = LOWER[this.tier];
+    } else this.slowFor = 0;
     if (avg <= GOOD_MS) this.goodFor += span;
     else this.goodFor = 0;
     if (this.sinceChange < 2) return false;

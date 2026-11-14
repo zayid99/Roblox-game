@@ -88,6 +88,7 @@ export class GameRenderer {
   private params: TierParams;
   private quality: QualitySetting = 'auto';
   private autoTier: QualityTier | null = null;
+  private gpu = '';
   private readonly dpr: DprController;
   private course: Course | null = null;
   private root = new Group();
@@ -182,7 +183,8 @@ export class GameRenderer {
     this.course = course;
     this.quality = quality;
     this.autoTier = autoTier;
-    this.applyTier(resolveTier(quality, autoTier));
+    this.gpu = this.readGpu();
+    this.applyTier(resolveTier(quality, autoTier, this.gpu));
     this.build();
     await this.warmUp();
   }
@@ -319,7 +321,7 @@ export class GameRenderer {
   /** The player's quality choice: applies now (rebuild + recompile behind the open panel). */
   setQuality(q: QualitySetting): void {
     this.quality = q;
-    const tier = resolveTier(q, this.autoTier);
+    const tier = resolveTier(q, this.autoTier, this.gpu);
     if (tier === this.params.tier || !this.course) return;
     this.applyTier(tier);
     this.build();
@@ -327,9 +329,27 @@ export class GameRenderer {
     this.frameCap.reset();
   }
 
-  /** Tier to save for the next load (§6.1), or null. */
+  /** A lower tier the frame-time check asks for (Auto quality only), or null. */
   pendingAutoTier(): QualityTier | null {
-    return this.quality === 'auto' ? this.dpr.pendingTier : null;
+    const t = this.quality === 'auto' ? this.dpr.pendingTier : null;
+    return t && t !== this.params.tier ? t : null;
+  }
+
+  /** Switches Auto quality to a lower tier right now (rebuilds the scene; call between frames). */
+  applyAutoTier(tier: QualityTier): void {
+    this.autoTier = tier;
+    if (this.quality === 'auto') this.setQuality('auto');
+  }
+
+  /** WebGL renderer string, unmasked when the browser allows it ('' if unavailable). */
+  private readGpu(): string {
+    try {
+      const gl = this.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+    } catch {
+      return '';
+    }
   }
 
   setReduceMotion(on: boolean): void {
@@ -539,9 +559,10 @@ export class GameRenderer {
   render(f: RenderFrame): void {
     if (!this.course) return;
     const now = performance.now();
-    // A gap over 250 ms is a hidden tab, a stall or a rebuild, not the frame rate: keep it out of the DPR average.
+    // A gap of a second or more is a hidden tab, a stall or a rebuild, not the frame rate: keep it out of the
+    // average. Slower real frame rates (down to 1 fps) still count, so a very slow machine drops a tier too.
     const gap = this.lastFrameMs > 0 ? now - this.lastFrameMs : 0;
-    this.frameMs = gap > 0 && gap < 250 ? gap : 0;
+    this.frameMs = gap > 0 && gap < 1000 ? gap : 0;
     this.lastFrameMs = now;
     const sim = f.sim;
     const state = f.state;

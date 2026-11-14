@@ -98,6 +98,10 @@ export class Game {
   private atHatchery = false;
   /** Set by the sim's 'shopZone' event: the player walked into the Shop stall (opens the Shop). */
   private shopWalkUp = false;
+  /** Game time when the tutorial was first seen finished this session (-1 = not yet). */
+  private ftueDoneAt = -1;
+  /** The first-session Daily calendar was shown. */
+  private dailyShown = false;
   /** A jump press waiting for the next fixed step (frames can run zero steps: high refresh, slow-mo). */
   private jumpLatch = false;
   /** Cash paid for a hidden-tab absence, toasted once the player is back in the game. */
@@ -742,6 +746,14 @@ export class Game {
     if (!paused) this.gfx.look(look.dx, look.dy, look.zoom, this.time);
     this.updateNudge(realDt);
 
+    // Auto quality: a machine that can't keep up drops a tier now (between frames, feet on the ground),
+    // not on the next visit. The scene is rebuilt, which costs one hitch.
+    const lowerTier = this.gfx.pendingAutoTier();
+    if (lowerTier && sim.player.mode === 'ground') {
+      state.settings.autoTier = lowerTier;
+      this.gfx.applyAutoTier(lowerTier);
+    }
+
     // 2. Tutorial.
     const tf = this.tutorial.update(realDt, sim, state, state.settings);
     for (const c of tf.commands) this.runCommand(c);
@@ -794,6 +806,18 @@ export class Game {
       else if (!this.atHatchery && sim.isOnHome() && calmWalkUp) {
         this.atHatchery = true;
         this.openPanel('hatchery', 'eggs');
+      }
+      // First session: the next calm moment at home after the tutorial, show the Daily calendar once, so a
+      // new player claims Day 1 and sees what tomorrow brings. Returning players get it on the Welcome card.
+      if (state.ftue.done && !this.tutorial.active) {
+        if (this.ftueDoneAt < 0) this.ftueDoneAt = this.time;
+        if (
+          !this.dailyShown && state.daily.count === 0 && this.time - this.ftueDoneAt > 20 && calmWalkUp && sim.isOnHome() &&
+          sim.player.mode === 'ground' && this.hud.openPanelKind === null && this.progression.dailyClaimable()
+        ) {
+          this.dailyShown = true;
+          this.openPanel('free', 'daily');
+        }
       }
       // Walking into the Shop stall opens the Shop (G8), once the Shop is unlocked. During the FTUE
       // only at its "open the Shop" step.
