@@ -80,6 +80,8 @@ export class Input {
   private jumpButtons: HTMLElement[] = [];
   private mouseLook = true;
   private lockFailedAt = -1e9;
+  /** The screen wants clicks (tutorial Shop step, Controls card): keep the cursor free, no re-lock. */
+  private cursorHeld = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -130,13 +132,27 @@ export class Input {
     if (!on) this.unlock();
   }
 
-  /** Free the cursor (panels, menus, settings). */
+  /** Free the cursor (panels, menus, settings, a tappable toast). The next click on the game locks it again. */
   unlock(): void {
     if (this.locked && document.exitPointerLock) document.exitPointerLock();
   }
 
+  /**
+   * Hold the cursor free while the screen asks for a click on the HUD (r1 F2: a locked mouse sends every click
+   * to the canvas, so a spotlighted tile could never be clicked). While held, clicks on the game do not lock.
+   */
+  holdCursor(on: boolean): void {
+    if (on === this.cursorHeld) return;
+    this.cursorHeld = on;
+    if (on) this.unlock();
+  }
+
+  get cursorHeldFree(): boolean {
+    return this.cursorHeld;
+  }
+
   private tryLock(): void {
-    if (this.locked || !this.mouseLook || this.touchMode || !this.enabled) return;
+    if (this.locked || !this.mouseLook || this.touchMode || !this.enabled || this.cursorHeld) return;
     // Browsers refuse a re-lock right after Esc; don't spam them.
     if (performance.now() - this.lockFailedAt < 1200) return;
     const req = this.canvas.requestPointerLock as unknown as ((o?: object) => Promise<void> | void) | undefined;

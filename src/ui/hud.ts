@@ -308,8 +308,11 @@ export class Hud {
   }
 
   private mouseHint: HTMLElement | null = null;
-  /** Desktop mouse-look hint: 'locked' shows "Esc shows cursor", 'free' shows "Click to look", 'off' hides it. */
-  setMouseHint(mode: 'locked' | 'free' | 'off'): void {
+  /**
+   * Desktop mouse-look hint: 'locked' shows "Esc shows cursor", 'free' shows "Click to look", 'click' (the game
+   * freed the cursor for a HUD button) shows "Click a button", 'off' hides it.
+   */
+  setMouseHint(mode: 'locked' | 'free' | 'click' | 'off'): void {
     if (!this.mouseHint) {
       this.mouseHint = el('div', 'mouse-hint');
       this.layer.appendChild(this.mouseHint);
@@ -322,7 +325,9 @@ export class Hud {
         ? `<span class="key">ESC</span><span class="t-stroke">Show cursor</span>`
         : mode === 'free'
           ? `${icon('hand', 26)}<span class="t-stroke">Click to look around</span>` // short: clears an 8-slot hotbar
-          : '';
+          : mode === 'click'
+            ? `${icon('hand', 26)}<span class="t-stroke">Cursor free: click a button</span>`
+            : '';
   }
 
   /** Muted state for the sound buoy (lead calls it on change). Not in the §10.2 list; see report. */
@@ -340,6 +345,21 @@ export class Hud {
   // ---------------------------------------------------------------- feedback
   toast(t: ToastSpec): void {
     this.toasts.push(t);
+  }
+
+  /** A toast on screen takes a click (desktop frees the pointer lock for it). */
+  get tappableToast(): 'action' | 'tap' | null {
+    return this.toasts.tappable;
+  }
+
+  private readonly nagged: Partial<Record<'free' | 'index', boolean>> = {};
+  /** Pulse a rail tile's badge: a reward has waited unclaimed for a while (r1 F9). */
+  setRailNag(id: 'free' | 'index', on: boolean): void {
+    if (this.nagged[id] === on) return;
+    const tile = this.rail.anchor(id);
+    if (!tile) return;
+    this.nagged[id] = on;
+    tile.classList.toggle('claim-nag', on);
   }
 
   banner(b: BannerSpec): void {
@@ -502,6 +522,7 @@ export class Hud {
     }
   }
 
+  /** Desktop/touch controls card (Settings Help; after the tutorial, see Game.paceMessages). Any click closes it. */
   showControlsCard(ms: number): void {
     const card = el('div', 'controls-card card', `<div class="cc-h t-d">CONTROLS</div>${controlsCardHtml(this.ctx.touch(), (k) => this.hotkeyOn(k))}`);
     const scrim = el('div', 'cc-wrap');

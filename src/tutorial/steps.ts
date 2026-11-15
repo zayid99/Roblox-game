@@ -37,18 +37,26 @@ export const SKIP_PAYS: readonly FtueStepId[] = ['grab', 'release', 'home'];
 export const TIMING = {
   grabNoMoveMs: 2000,
   grabEdgeIdleMs: 6000,
+  /** No movement at all this long: big pill, arrow and trail to the edge, camera nudge, JUMP pulses on touch. */
+  grabIdleMs: 8000,
   failMs: 2600,
   stampMs: 1000,
   collectAutoAfterFirstMs: 8000,
   collectStuckMs: 8000,
   homeStuckMs: 10000,
   earnBannerMs: 2500,
-  shopSpotlightMs: 3000,
+  shopSpotlightMs: 1500,
+  /** Standing calm on home this long in the shop step without opening it: the Shop opens by itself (r1 F2). */
+  shopAutoOpenMs: 4000,
+  /** After an auto-open the player closed without buying: wait longer before the next one. */
+  shopReopenMs: 10000,
   shopCloseMs: 1200,
   bannerMs: 2000,
   splashPillMs: 3500,
   readyBannerMs: 1800,
-  controlsMs: 4000,
+  controlsMs: 6000,
+  /** Ready step: wait at most this long for a calm moment on home to show the Controls card (desktop). */
+  readyWaitMs: 12000,
   homeWaveTimer: 60,
   waveCapTimer: 30,
   skipMinTimer: 45,

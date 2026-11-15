@@ -140,4 +140,35 @@ describe('Input', () => {
     expect(b).toBe(a);
     expect(b.dx).toBe(0);
   });
+
+  it('holdCursor frees a locked mouse and blocks re-locking until released (r1 F2)', () => {
+    const { input, canvas } = make();
+    let locks = 0;
+    let exits = 0;
+    canvas.requestPointerLock = () => {
+      locks++;
+    };
+    doc.exitPointerLock = () => {
+      exits++;
+    };
+    canvas.dispatchEvent(pointer('pointerdown', 1, 'mouse', 640, 360));
+    expect(locks).toBe(1);
+    // The browser grants the lock.
+    doc.pointerLockElement = canvas;
+    doc.dispatchEvent(new Event('pointerlockchange'));
+    expect(input.locked).toBe(true);
+
+    input.holdCursor(true);
+    expect(exits).toBe(1);
+    doc.pointerLockElement = null;
+    doc.dispatchEvent(new Event('pointerlockchange'));
+    win.dispatchEvent(pointer('pointerup', 1, 'mouse', 640, 360));
+    // A click on the game while held does not lock again.
+    canvas.dispatchEvent(pointer('pointerdown', 2, 'mouse', 640, 360));
+    win.dispatchEvent(pointer('pointerup', 2, 'mouse', 640, 360));
+    expect(locks).toBe(1);
+    input.holdCursor(false);
+    canvas.dispatchEvent(pointer('pointerdown', 3, 'mouse', 640, 360));
+    expect(locks).toBe(2);
+  });
 });

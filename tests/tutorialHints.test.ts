@@ -49,7 +49,10 @@ describe('Hints (§7.4)', () => {
     sim.player.reset(new Vector3(locked.pos.x, locked.pos.y - 8, locked.pos.z + 4));
     tick(0.5, { ...ctx, ftueStep: 'wave' });
     expect(toasts.length).toBe(0);
+    // Busy toast, and the quiet seconds after the tutorial ends (r1 F7: the hand-over has its own messages).
     tick(0.5, { ...ctx, toastBusy: true });
+    expect(toasts.length).toBe(0);
+    tick(HINT.afterFtueSec - 1);
     expect(toasts.length).toBe(0);
     tick(0.5, { ...ctx, surge: true });
     expect(toasts.length).toBe(0);
@@ -103,7 +106,7 @@ describe('Hints (§7.4)', () => {
     tick(0.1, { ...ctx, ftueStep: 'collect' });
     hints.onSimEvent({ type: 'bounce', buoyId: 1 }, sim);
     tick(1, { ...ctx, ftueStep: 'collect' });
-    tick(1);
+    tick(HINT.afterFtueSec + 0.1);
     expect(toasts.length).toBe(0);
     expect(state.hintsSeen).not.toContain('bounce');
     hints.onSimEvent({ type: 'bounce', buoyId: 1 }, sim);
@@ -128,8 +131,10 @@ describe('Hints (§7.4)', () => {
     ];
     for (const e of ev) hints.onSimEvent(e, sim);
     tick(0.01);
-    expect(toasts.length).toBe(1); // one toast per update; the rest wait
-    tick(1);
+    expect(toasts.length).toBe(1); // one toast at a time, HINT.gapSec apart; the rest wait
+    tick(HINT.gapSec - 0.1);
+    expect(toasts.length).toBe(1);
+    tick(HINT.gapSec * 4 + 0.5);
     expect(toasts.map((t) => t.text)).toEqual([
       COPY.hints.bounce,
       COPY.hints.chainIntro,

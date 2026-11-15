@@ -34,6 +34,17 @@ export class ToastsPart {
     this.el = el('div', 'toasts');
   }
 
+  /** A toast on screen takes a click: 'action' (a button: CLAIM, KEEP THEM, BUDDY), 'tap' (the toast itself), or null. */
+  get tappable(): 'action' | 'tap' | null {
+    if (this.live.some((l) => !!l.spec.action)) return 'action';
+    return this.live.some((l) => !!l.spec.onTap) ? 'tap' : null;
+  }
+
+  /** Any toast on screen or waiting. */
+  get busy(): boolean {
+    return this.live.length > 0 || this.queue.length > 0;
+  }
+
   setSurge(on: boolean): void {
     if (this.surge && !on) {
       // Warnings held back by the surge are stale once it is over (the wave may have taken what they talk about).

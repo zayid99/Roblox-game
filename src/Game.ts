@@ -4,7 +4,7 @@
 import { Vector3 } from 'three';
 import { AudioDirector } from './audio/director';
 import type {
-  BottleKind, PanelData, PanelKind, PanelTab, Reward, ScreenPt, SeaEventId, SimEvent, ToastSpec, TrackerView, TutorialCommand, UiActions,
+  BottleKind, PanelData, PanelKind, PanelTab, Reward, ScreenPt, SeaEventId, SimEvent, ToastSpec, TrackerView, TutorialCommand, TutorialFrame, UiActions,
 } from './contracts';
 import { TimeScale } from './core/timeScale';
 import { buildAudioFrame, buildHudView, buildRenderFrame, lastReticle } from './core/views';
@@ -29,6 +29,9 @@ import { Platform } from './platform/crazygames';
 import { GameRenderer } from './render/gameRenderer';
 import { TutorialCore } from './tutorial/core';
 import { Hints } from './tutorial/hints';
+import { COPY } from './tutorial/copy';
+import { MessagePacer } from './tutorial/pacer';
+import { readyGifts } from './game/gifts';
 import { TutorialOverlay } from './tutorial/overlay';
 import { Hud, icon, type HudDeps } from './ui/hud';
 import { pickLayout } from './ui/layout';
@@ -44,6 +47,9 @@ const DEBUG = import.meta.env.DEV || PARAMS.has('debug');
 const tmpV = new Vector3();
 
 /** A short label for a reward ("$1.2K", "+20 Pearls", "Lucky Tide"). */
+/** First session: the Daily calendar pops this long after the tutorial (at a calm moment at home). */
+const FIRST_DAILY_AFTER_SEC = 180;
+
 function rewardText(r: Reward): string {
   const parts: string[] = [];
   if (r.cash) parts.push(formatCash(r.cash));
@@ -104,6 +110,11 @@ export class Game {
   private ftueDoneAt = -1;
   /** The first-session Daily calendar was shown. */
   private dailyShown = false;
+  /** Post-tutorial messages wait for calm moments, one at a time (r1 F7), plus the claim nudges (F9). */
+  private readonly pacer = new MessagePacer();
+  /** The screen asks for a HUD click (desktop: cursor freed from the pointer lock, r1 F2). */
+  private wantClick = false;
+  private toastClick = false;
   /** A jump press waiting for the next fixed step (frames can run zero steps: high refresh, slow-mo). */
   private jumpLatch = false;
   /** Cash paid for a hidden-tab absence, toasted once the player is back in the game. */
@@ -770,7 +781,7 @@ export class Game {
     this.input.update();
     const look = this.input.consumeLook();
     this.hud.setMouseHint(
-      this.input.touchMode || this.input.lastDevice === 'touch' || !state.settings.mouseLook ? 'off' : this.input.locked ? 'locked' : paused ? 'off' : 'free',
+      this.input.touchMode || this.input.lastDevice === 'touch' || !state.settings.mouseLook ? 'off' : this.input.locked ? 'locked' : paused ? 'off' : this.wantClick ? 'click' : 'free',
     );
     if (!paused) this.gfx.look(look.dx, look.dy, look.zoom, this.time);
     this.updateNudge(realDt);
@@ -837,13 +848,15 @@ export class Game {
         this.atHatchery = true;
         this.openPanel('hatchery', 'eggs');
       }
-      // First session: the next calm moment at home after the tutorial, show the Daily calendar once, so a
-      // new player claims Day 1 and sees what tomorrow brings. Returning players get it on the Welcome card.
+      // First session: about 3 minutes after the tutorial, at a calm moment at home with nothing else queued,
+      // show the Daily calendar once, so a new player claims Day 1 and sees what tomorrow brings (r1 F7: it used
+      // to land 20-30 s after the hand-over). Returning players get it on the Welcome card.
       if (state.ftue.done && !this.tutorial.active) {
         if (this.ftueDoneAt < 0) this.ftueDoneAt = this.time;
         if (
-          !this.dailyShown && state.daily.count === 0 && this.time - this.ftueDoneAt > 20 && calmWalkUp && sim.isOnHome() &&
-          sim.player.mode === 'ground' && this.hud.openPanelKind === null && this.progression.dailyClaimable()
+          !this.dailyShown && state.daily.count === 0 && this.time - this.ftueDoneAt > FIRST_DAILY_AFTER_SEC && calmWalkUp && sim.isOnHome() &&
+          sim.player.mode === 'ground' && this.hud.openPanelKind === null && !this.hud.bannerUp && this.pacer.pending === 0 &&
+          this.progression.dailyClaimable()
         ) {
           this.dailyShown = true;
           this.openPanel('free', 'daily');
@@ -869,6 +882,8 @@ export class Game {
     this.progression.update(realDt, { active, playing: active && !this.paused, sim, ftueDone: state.ftue.done });
     for (const e of this.progression.events) this.onProgressEvent(e);
     const toastBusy = !!this.uiRoot.querySelector('.toasts .toast');
+    this.paceMessages(realDt, paused, toastBusy);
+    this.syncCursor(tf);
     const hintPrompt = this.hints.update(realDt, sim, state, {
       surge: sim.wave.phase === 'surge',
       toastBusy,
@@ -1016,6 +1031,9 @@ export class Game {
       }
       case 'closePanel':
         this.hud.closePanel();
+        break;
+      case 'openPanel':
+        if (this.hud.openPanelKind === null && !this.paused) this.openPanel(c.kind, c.tab);
         break;
       case 'respawnFtue':
         this.respawnAtFtue();
@@ -1182,7 +1200,8 @@ export class Game {
         this.seaFeedback(e);
         break;
       case 'surgeEnd':
-        hud.toast({ text: e.golden ? 'Golden creatures washed up' : 'Fresh creatures washed up', kind: 'info', icon: e.golden ? 'sparkle' : 'creature' });
+        // The practice wave ends in the tutorial's own YOU SURVIVED / YOU'RE READY beat: no extra toast then.
+        if (!tutorialOn) hud.toast({ text: e.golden ? 'Golden creatures washed up' : 'Fresh creatures washed up', kind: 'info', icon: e.golden ? 'sparkle' : 'creature' });
         if (e.survived && !hud.bannerUp && !this.tutorial.active) hud.float(this.playerScreen(2), 'SURVIVED', 'perfect', 'survived');
         this.maybeMidgameAd();
         break;
@@ -1292,6 +1311,77 @@ export class Game {
     this.runAd('midgame', () => {});
   }
 
+  // ================================================================ calm-moment pacing (r1 F2, F7, F9)
+
+  /** One paced toast at a calm moment, and the rail badge pulses for rewards left unclaimed. */
+  private paceMessages(realDt: number, paused: boolean, toastBusy: boolean): void {
+    const sim = this.sim;
+    const state = this.state;
+    const calm =
+      state.ftue.done && !this.tutorial.active && !paused && sim.player.mode === 'ground' && sim.wave.phase === 'calm' &&
+      !this.hud.bannerUp && !toastBusy && this.hud.openPanelKind === null;
+    // The first-session Daily pops by itself later (frame step 4): no nudge for it before that.
+    const daily = this.progression.dailyClaimable() && (this.dailyShown || state.daily.count > 0) ? 1 : 0;
+    const freeReady = state.ftue.done ? readyGifts(state.gifts).length + daily : 0;
+    let indexNew = 0;
+    if (state.ftue.done) for (const id in state.index) if (state.index[id] > 0 && !state.indexSeen.includes(id)) indexNew++;
+    const r = this.pacer.update(realDt, { calm, home: sim.isOnHome(), freeReady, indexNew }, {
+      free: () => this.giftToast(COPY.nudge.giftWaiting),
+      index: () => ({ text: COPY.nudge.indexNew, kind: 'info', icon: 'index', action: { label: COPY.nudge.see, icon: 'index', onTap: () => this.openPanel('index') } }),
+    });
+    if (r.toast) this.hud.toast(r.toast);
+    // The tutorial ended before a calm moment on home: the Controls card shows at the next one (desktop only).
+    if (this.tutorial.controlsPending && (this.input.touchMode || this.input.lastDevice === 'touch')) this.tutorial.controlsPending = false;
+    else if (this.tutorial.controlsPending && calm && sim.isOnHome() && this.pacer.pending === 0) {
+      this.tutorial.controlsPending = false;
+      this.input.unlock();
+      this.hud.showControlsCard(8000);
+    }
+    this.hud.setRailNag('free', r.nag.free);
+    this.hud.setRailNag('index', r.nag.index);
+  }
+
+  /** A gift toast whose CLAIM button claims every ready gift at once (or opens FREE for the Daily). */
+  private giftToast(text: string): ToastSpec {
+    return {
+      text,
+      kind: 'info',
+      icon: 'gift',
+      action: {
+        label: COPY.nudge.claim,
+        icon: 'gift',
+        onTap: () => {
+          const r = readyGifts(this.state.gifts).length ? this.progression.claimGift('all') : null;
+          if (!r) {
+            this.openPanel('free', this.progression.dailyClaimable() ? 'daily' : 'gifts');
+            return;
+          }
+          this.audio.play('claim');
+          if (r.cash) void this.hud.coinFly({ x: window.innerWidth / 2, y: 80 }, r.cash, 'cash');
+          this.hud.toast({ text: COPY.nudge.claimed(rewardText(r)), kind: 'good', icon: 'gift' });
+          this.save();
+        },
+      },
+    };
+  }
+
+  /**
+   * Desktop pointer lock sends every click to the canvas, so HUD buttons cannot be clicked (r1 F2). Keep the
+   * cursor free while the tutorial asks for a click, and free it when a tappable toast shows (not mid-swing).
+   * The next click into the 3D view locks it again.
+   */
+  private syncCursor(tf: TutorialFrame): void {
+    this.input.holdCursor(!!tf.needsCursor);
+    // A button (CLAIM, KEEP THEM, BUDDY) frees it anywhere on the ground; a plain tappable toast only on home,
+    // so a run across the islands keeps its mouse look.
+    const kind = this.hud.tappableToast;
+    const sim = this.sim;
+    const toast = sim.player.mode !== 'swing' && (kind === 'action' || (kind === 'tap' && sim.isOnHome()));
+    if (toast && !this.toastClick) this.input.unlock();
+    this.toastClick = toast;
+    this.wantClick = !!tf.needsCursor || (kind !== null && !this.input.locked);
+  }
+
   private onProgressEvent(e: ProgressEvent): void {
     const hud = this.hud;
     this.tutorial.onProgressEvent(e);
@@ -1330,7 +1420,7 @@ export class Game {
         break;
       case 'giftReady':
         this.audio.play('giftReady');
-        hud.toast({ text: 'Free gift ready', kind: 'info', icon: 'gift', onTap: () => this.openPanel('free', 'gifts') });
+        this.pacer.push(this.giftToast(COPY.nudge.giftReady), { topic: 'free', valid: () => readyGifts(this.state.gifts).length > 0 });
         break;
       case 'unlock': {
         this.audio.play('ui.open');
@@ -1342,12 +1432,12 @@ export class Game {
         if (text && e.what !== 'index') {
           const tab: PanelTab | undefined = e.what === 'locker' ? 'locker' : e.what === 'rebirth' ? 'rebirth' : undefined;
           const kind: PanelKind = e.what === 'free' ? 'free' : 'shop';
-          hud.toast({ text, kind: 'good', icon: e.what === 'locker' ? 'locker' : e.what === 'rebirth' ? 'rebirth' : 'gift', onTap: () => this.openPanel(kind, tab) });
+          this.pacer.push({ text, kind: 'good', icon: e.what === 'locker' ? 'locker' : e.what === 'rebirth' ? 'rebirth' : 'gift', onTap: () => this.openPanel(kind, tab) });
         }
         break;
       }
       case 'featured':
-        hud.toast({ text: `Featured this week: ${getSpecies(e.speciesId).name}`, kind: 'info', icon: 'sparkle', onTap: () => this.openPanel('index') });
+        this.pacer.push({ text: `Featured this week: ${getSpecies(e.speciesId).name}`, kind: 'info', icon: 'sparkle', onTap: () => this.openPanel('index') });
         break;
       case 'discovery':
         void hud.coinFly(this.playerScreen(), e.pearls, 'pearl', 5);

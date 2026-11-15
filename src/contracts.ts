@@ -181,6 +181,7 @@ export type TutorialCommand =
   | { type: 'forceSpawn'; islandOrder: number; point: number; speciesId?: string; mutation?: number }
   | { type: 'grant'; reward: Reward; source: string; from?: ScreenPt | string /* anchor id */ }
   | { type: 'closePanel' }
+  | { type: 'openPanel'; kind: PanelKind; tab?: PanelTab }   // shop step fallback (r1 F2)
   | { type: 'respawnFtue' };
 export interface PromptSpec {
   id: string; headline: string; sub?: string; size: 'big' | 'normal' | 'small'; fail: boolean;
@@ -201,6 +202,8 @@ export interface TutorialFrame {
   skipVisible: boolean;
   musicLowpass: boolean; vignette: number;
   commands: TutorialCommand[];                      // drained by the lead each frame
+  /** The screen asks for a HUD click (shop step, Controls card): desktop keeps the pointer lock off. */
+  needsCursor?: boolean;
 }
 
 // ---------- Audio input ----------

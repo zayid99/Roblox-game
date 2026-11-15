@@ -77,6 +77,9 @@ export class FtueHarness {
       case 'closePanel':
         this.setPanel(null);
         break;
+      case 'openPanel':
+        if (!this.panel) this.setPanel(c.kind);
+        break;
       case 'respawnFtue':
         this.respawnFtue();
         break;
@@ -204,7 +207,8 @@ export function playFtue(h: FtueHarness, opts: BotOptions = {}): BotResult {
     }
   };
 
-  while (sim.time - simStart < maxSim && (core.active || !state.ftue.done)) {
+  // Real time too: an open panel pauses the sim, and a bot that never closes it must not loop forever.
+  while (sim.time - simStart < maxSim && h.realTime < maxSim * 4 && (core.active || !state.ftue.done)) {
     const p = sim.player;
     const step = tf.step;
     input.jumpPressed = false;
@@ -238,7 +242,11 @@ export function playFtue(h: FtueHarness, opts: BotOptions = {}): BotResult {
       case 'shop':
         input.moveX = input.moveZ = 0;
         input.jumpHeld = false;
-        if (opts.interruptShop && !h.simEvents.some((e) => e.type === 'surgeEnd')) break;
+        if (opts.interruptShop && !h.simEvents.some((e) => e.type === 'surgeEnd')) {
+          // A slow player: closes the Shop the tutorial opened for them (r1 F2 fallback) and keeps waiting.
+          if (h.panel) h.setPanel(null);
+          break;
+        }
         if (!h.panel) {
           shopAsk += dt;
           if (shopAsk > 0.8) {

@@ -49,6 +49,8 @@ export const COPY = {
 
   // Step 6 `shop`
   openShop: { headline: 'OPEN THE SHOP' } as Line,
+  /** Desktop: the cursor is freed at this step, so the tile can be clicked (r1 F2). */
+  openShopDesktop: { headline: 'OPEN THE SHOP', sub: 'Click SHOP or press U' } as Line,
   buyReach: { headline: 'BUY ROPE REACH' } as Line,
   focusNote: 'UNLOCKS ZONE 2',
   focusSub: 'Longer rope reaches farther islands',
@@ -93,6 +95,16 @@ export const COPY = {
     { keys: ['JUMP'], text: 'Jump, hold to swing', size: 'full' },
     { keys: ['DRAG'], text: 'Drag the right side to look', size: 'full' },
   ] as ControlsRow[],
+
+  // After the tutorial (pacer.ts): paced unlock messages and the claim nudges (r1 F7, F9).
+  nudge: {
+    giftReady: 'Free gift ready',
+    giftWaiting: 'A free gift is waiting',
+    claim: 'CLAIM',
+    claimed: (what: string) => `Claimed: ${what}`,
+    indexNew: 'New creatures in your Index',
+    see: 'SEE',
+  },
 
   // §7.4 hints
   dragToLook: { headline: 'LOOK AROUND' } as Line,
