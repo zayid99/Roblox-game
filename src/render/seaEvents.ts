@@ -13,6 +13,8 @@ export interface SeaFrame {
   /** 0..1 fade-in/out of the event (so particles ramp rather than snap). */
   strength: number;
   player: Vector3;
+  /** Camera position: nothing spawns within a few metres of it (a drop at the lens looks like a wall). */
+  camera: Vector3;
   reduceMotion: boolean;
   lowTier: boolean;
 }
@@ -34,11 +36,12 @@ export class SeaEventVisuals {
       const r = 3 + Math.random() * 16;
       const x = P.x + Math.cos(a) * r;
       const z = P.z + Math.sin(a) * r - 4;
+      if (Math.hypot(x - f.camera.x, z - f.camera.z) < 6) continue;
       switch (f.event) {
         case 'rainbowRain': {
           // Coloured drops falling through the scene, a few glinting.
           const c = RAINBOW[(Math.random() * RAINBOW.length) | 0];
-          this.particles.emit(x, P.y + 10 + Math.random() * 6, z, 0, -16, 0, c, 0.16, 1.1, 6, Math.random() < 0.35);
+          this.particles.emit(x, P.y + 10 + Math.random() * 6, z, 0, -16, 0, c, 0.24, 1.1, 6, Math.random() < 0.35);
           break;
         }
         case 'treasureFleet':
@@ -59,4 +62,4 @@ export class SeaEventVisuals {
 }
 
 /** Particles (or splash bursts) per second at full strength. */
-const RATE: Record<SeaEventId, number> = { rainbowRain: 70, treasureFleet: 16, calmSeas: 14, feedingFrenzy: 5 };
+const RATE: Record<SeaEventId, number> = { rainbowRain: 100, treasureFleet: 16, calmSeas: 14, feedingFrenzy: 5 };

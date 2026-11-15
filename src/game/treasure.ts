@@ -18,6 +18,7 @@ import type { Course, Island } from './course';
 import { pickSpecies, RARITIES, type CreatureRef } from './creatures';
 import { minutes, rollMysteryCreature } from './rewards';
 import type { Rng } from './rng';
+import type { GameSim } from './sim';
 import type { GameState } from './state';
 import { ZONES } from './zones';
 
@@ -244,3 +245,30 @@ export class TreasureSim {
 }
 
 const NONE: Bottle[] = [];
+
+const homeTarget = new Vector3();
+
+/**
+ * Edge-arrow target for bottles (after the tutorial, calm phase only, so the wave-safety arrow wins): home while
+ * carrying one, else the nearest bottle while a carry slot is free. Null otherwise.
+ */
+export function treasureTarget(sim: GameSim): { pos: Vector3; icon: 'gift' | 'home'; label: string } | null {
+  if (sim.wave.phase !== 'calm' || sim.splashTime > 0 || sim.seaRespawnTime > 0 || !sim.state.ftue.done) return null;
+  const p = sim.player.pos;
+  if (sim.treasure.carried.length) {
+    if (sim.isOnHome()) return null;
+    const h = homeTarget.copy(sim.course.homeSpawn);
+    return { pos: h, icon: 'home', label: `Open ${Math.round(Math.hypot(h.x - p.x, h.z - p.z))} m` };
+  }
+  if (!sim.treasure.world.length || sim.carryFree() <= 0) return null;
+  let best: Bottle | null = null;
+  let bestD = Infinity;
+  for (const b of sim.treasure.world) {
+    const d = Math.hypot(b.pos.x - p.x, b.pos.z - p.z);
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  return best ? { pos: best.pos, icon: 'gift', label: `Treasure ${Math.round(bestD)} m` } : null;
+}

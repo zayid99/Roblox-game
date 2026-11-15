@@ -8,9 +8,10 @@
 //
 // Scheduling rules: never during the tutorial (an event in progress is cancelled if a tutorial starts), and the
 // 15 s heads-up only starts in a calm phase whose countdown leaves it fully clear of the wave warning, so the
-// event banners never overlap the wave's banner and horn. Economy: no direct cash; the events only change spawns,
-// mutation odds, bottle count and wave timing, so the pacing bands are unaffected (tests/seaEvents.test.ts).
-import type { SeaEventId } from '../contracts';
+// event banners never overlap the wave's banner and horn. Economy: no direct cash. Treasure Fleet's bottles are in
+// treasure.ts's measurement; Frenzy and Rainbow Rain change what is out there, not how much a trip can carry.
+import type { SeaEventId, SeaHudView } from '../contracts';
+import type { GameSim } from './sim';
 import { WAVE } from './config';
 import { Rng } from './rng';
 import type { WavePhase } from './wave';
@@ -198,4 +199,14 @@ export class SeaEventSim {
     this.left = 0;
     this.nextAt = Math.max(this.clock + 60, this.headsUpAt + this.rng.range(SEA.gapMin, SEA.gapMax));
   }
+}
+
+/** HUD view of the sea (event chip, bottles in hand and in the world). */
+export function seaHudView(sim: Pick<GameSim, 'sea' | 'treasure'>): SeaHudView {
+  const sea = sim.sea;
+  const event =
+    sea.phase === 'idle' || !sea.id
+      ? null
+      : { id: sea.id, name: SEA_EVENTS[sea.id].name, sub: SEA_EVENTS[sea.id].sub, phase: sea.phase, secondsLeft: sea.left, frac: Math.max(0, Math.min(1, sea.left / Math.max(1e-6, sea.length))) };
+  return { event, carriedBottles: sim.treasure.carried.map((b) => b.kind), worldBottles: sim.treasure.world.length };
 }

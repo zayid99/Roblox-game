@@ -4,7 +4,7 @@
 import { Vector3 } from 'three';
 import { AudioDirector } from './audio/director';
 import type {
-  PanelData, PanelKind, PanelTab, Reward, ScreenPt, SimEvent, ToastSpec, TrackerView, TutorialCommand, UiActions,
+  BottleKind, PanelData, PanelKind, PanelTab, Reward, ScreenPt, SeaEventId, SimEvent, ToastSpec, TrackerView, TutorialCommand, UiActions,
 } from './contracts';
 import { TimeScale } from './core/timeScale';
 import { buildAudioFrame, buildHudView, buildRenderFrame, lastReticle } from './core/views';
@@ -17,6 +17,8 @@ import type { PlayerInput } from './game/player';
 import { Progression, type ProgressEvent } from './game/progression';
 import { VOYAGE, VOYAGE_LENGTH } from './game/quests';
 import { applyReward } from './game/rewards';
+import { SEA_EVENTS } from './game/seaEvents';
+import { oddsText } from './game/treasure';
 import { buildShopView } from './game/shopView';
 import { activeBuddy, buildHatcheryView, buddyBonus, hatchEgg, inHatcheryZone, setBuddy } from './game/hatchery';
 import { Rng } from './game/rng';
@@ -758,6 +760,7 @@ export class Game {
     const tf = this.tutorial.update(realDt, sim, state, state.settings);
     for (const c of tf.commands) this.runCommand(c);
     sim.overrides = tf.sim;
+    sim.tutorialActive = this.tutorial.active; // no Treasure Bottles or Sea Events during a tutorial
     this.hud.setFocus(tf.focus);
     this.timeScale.request('tutorial', tf.timeScale, tf.timeScale < 1 ? 250 : 0);
     this.drainTutorialEffects();
@@ -1142,6 +1145,13 @@ export class Game {
       case 'shopZone':
         this.shopWalkUp = true;
         break;
+      case 'bottleSpawn':
+      case 'bottlePickup':
+      case 'bottleLost':
+      case 'bottleOpen':
+      case 'seaEvent':
+        this.seaFeedback(e);
+        break;
       case 'surgeEnd':
         hud.toast({ text: e.golden ? 'Golden creatures washed up' : 'Fresh creatures washed up', kind: 'info', icon: e.golden ? 'sparkle' : 'creature' });
         if (e.survived && !hud.bannerUp && !this.tutorial.active) hud.float(this.playerScreen(2), 'SURVIVED', 'perfect', 'survived');
@@ -1178,6 +1188,71 @@ export class Game {
       if (b && b.speciesId === c.speciesId && b.mutation === c.mutation) return this.gfx.pedestalScreen(i);
     }
     return null;
+  }
+
+  // ================================================================ Treasure Bottles and Sea Events
+
+  private seaFeedback(e: Extract<SimEvent, { type: 'bottleSpawn' | 'bottlePickup' | 'bottleLost' | 'bottleOpen' | 'seaEvent' }>): void {
+    const hud = this.hud;
+    switch (e.type) {
+      case 'bottleSpawn':
+        // Fleet bottles come with the Treasure Fleet banner; the edge arrow points at the nearest bottle.
+        if (e.reason !== 'fleet') hud.toast({ text: e.kind === 'legendary' ? 'Legendary treasure washed up!' : 'Treasure washed up!', kind: 'good', icon: 'gift' });
+        break;
+      case 'bottlePickup':
+        hud.float(this.playerScreen(2.6), e.kind === 'legendary' ? 'LEGENDARY BOTTLE' : 'TREASURE', 'bonus', 'bottle');
+        if (!this.sim.isOnHome()) hud.toast({ text: 'Take it home to open it', kind: 'info', icon: 'home' });
+        break;
+      case 'bottleLost':
+        if (e.how === 'splash') hud.toast({ text: 'The wave took your bottle', kind: 'bad', icon: 'wave' });
+        else hud.toast({ text: e.kinds.length > 1 ? 'The wave took the bottles' : 'The wave took the bottle', kind: 'info', icon: 'wave' });
+        break;
+      case 'bottleOpen': {
+        const c = e.reward.creature;
+        const name = c ? `${['', 'Gold ', 'Diamond ', 'Rainbow '][c.mutation]}${getSpecies(c.speciesId).name}` : null;
+        const done = hud.sea.open(e.kind, e.prize, e.reward, name, oddsText(e.kind), this.reduceMotion);
+        const r = hud.sea.cards.getBoundingClientRect();
+        const from = { x: r.left + r.width / 2, y: r.top + 60 };
+        if (e.reward.cash) void hud.coinFly(from, e.reward.cash, 'cash');
+        if (e.reward.pearls) void hud.coinFly(from, e.reward.pearls, 'pearl', 5);
+        if (e.kind === 'legendary' || c) hud.confetti('center', 40);
+        if (c) {
+          void done.then(() => {
+            const found = SPECIES.filter((sp) => (this.state.index[sp.id] ?? 0) > 0).length;
+            void hud.reveal(c, 'compact', `${found}/${SPECIES.length}`, { stamp: 'TREASURE', chip: 'Sent to your base' });
+            if (e.discovery) hud.toast({ text: 'New species: +5 Pearls', kind: 'good', icon: 'pearl' });
+          });
+        }
+        this.save();
+        break;
+      }
+      case 'seaEvent': {
+        const def = SEA_EVENTS[e.id];
+        const title = def.name.toUpperCase();
+        if (e.phase === 'headsUp') hud.banner({ title: `${title} IN 15 S`, sub: def.sub, hue: def.hue, priority: 'info', ms: 2600 });
+        else if (e.phase === 'start') {
+          hud.banner({ title: `${title}!`, sub: def.sub, hue: def.hue, priority: 'info', ms: 2400 });
+          if (e.id === 'treasureFleet') hud.toast({ text: '3 treasure bottles washed up!', kind: 'good', icon: 'gift' });
+        } else hud.toast({ text: `${def.name} is over`, kind: 'info', icon: 'wave' });
+        break;
+      }
+    }
+  }
+
+  /** Debug (?debug): start a sea event now; `skipHeadsUp` jumps past the 15 s heads-up. */
+  debugSeaEvent(id?: SeaEventId, skipHeadsUp = false): void {
+    if (DEBUG) this.sim.forceSeaEvent(id, skipHeadsUp);
+  }
+
+  /** Debug (?debug): wash up a bottle now, on the farthest reachable island or (`here`) a few metres ahead. */
+  debugBottle(kind: BottleKind = 'normal', here = false): void {
+    if (!DEBUG) return;
+    const b = this.sim.spawnBottle(kind);
+    if (b && here) {
+      const p = this.sim.player.pos;
+      const d = this.gfx.camera.getWorldDirection(tmpV).setY(0).normalize();
+      b.pos.set(p.x + d.x * 6 - d.z * 2.5, p.y, p.z + d.z * 6 + d.x * 2.5); // ahead and a little to the right
+    }
   }
 
   private maybeMidgameAd(): void {

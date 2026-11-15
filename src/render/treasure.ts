@@ -59,7 +59,7 @@ const beamMaterial = () =>
       varying float vY;
       varying vec3 vCol;
       void main() {
-        float a = (1.0 - vY) * (1.0 - vY) * 0.55;
+        float a = (1.0 - vY) * (1.0 - vY) * 0.7;
         gl_FragColor = vec4(vCol * a, a);
       }`,
     transparent: true,
@@ -99,7 +99,7 @@ export class TreasureVisuals {
     const b = bottleBuilder();
     this.bodies = new InstancedMesh(b.build(), toonVertexMaterial, MAX);
     this.outlines = new InstancedMesh(b.outline(0.05), inkMaterial, MAX);
-    const beamGeo = new CylinderGeometry(0.55, 0.9, 16, 12, 1, true).translate(0, 8, 0);
+    const beamGeo = new CylinderGeometry(0.3, 0.55, 18, 10, 1, true).translate(0, 9, 0);
     this.beams = new InstancedMesh(beamGeo, beamMaterial(), MAX);
     this.beams.renderOrder = 4;
     for (const m of [this.bodies, this.outlines, this.beams]) {
@@ -127,7 +127,7 @@ export class TreasureVisuals {
       // Pop in over 0.4 s with a little overshoot, then bob and turn.
       const k = Math.min(1, Math.max(0, age / 0.4));
       const pop = k < 1 ? 1 - Math.pow(1 - k, 3) * Math.cos(k * 7) : 1;
-      const scale = (b.kind === 'legendary' ? 1.35 : 1.1) * Math.max(0.01, pop);
+      const scale = (b.kind === 'legendary' ? 2.1 : 1.7) * Math.max(0.01, pop);
       const bob = f.reduceMotion ? 0 : Math.sin(f.time * 2.2 + b.uid) * 0.12;
       p.set(b.pos.x, b.pos.y + 0.15 + bob, b.pos.z);
       q.setFromAxisAngle(UP, f.time * 0.9 + b.uid).multiply(tilt.setFromAxisAngle(Z, Math.sin(f.time * 1.7 + b.uid) * 0.18));
@@ -148,7 +148,7 @@ export class TreasureVisuals {
         const bob = f.reduceMotion ? 0 : Math.sin(f.time * 4 + i) * 0.06;
         p.set(f.player.x + (i - (f.carried.length - 1) / 2) * 0.7, f.player.y + 3.1 + bob, f.player.z);
         q.setFromAxisAngle(UP, f.time * 1.6 + i);
-        this.place(n++, p, q, 0.8, b.kind, f.outlines);
+        this.place(n++, p, q, 1.05, b.kind, f.outlines);
       });
     }
     this.bodies.count = n;

@@ -13,6 +13,8 @@ import type { Progression } from '../game/progression';
 import type { GameSim } from '../game/sim';
 import type { GameState } from '../game/state';
 import type { GameRenderer, RenderFrame } from '../render/gameRenderer';
+import { seaHudView } from '../game/seaEvents';
+import { treasureTarget } from '../game/treasure';
 
 const tmp = new Vector3();
 const grip = new Vector3();
@@ -108,6 +110,8 @@ export function buildHudView(i: HudViewInput): HudView {
     target = { pos: home, icon: 'home', label: `${Math.round(Math.hypot(home.x - p.pos.x, home.z - p.pos.z))} m` };
   }
   // After the tutorial: where a new player should head next (creatures, home, or safety from the wave).
+  // Treasure Bottles: a bottle out there (or home to open one), in calm phases only (src/game/treasure.ts).
+  if (!target && tf.step === null) target = treasureTarget(sim);
   if (!target && tf.step === null) target = guideTarget(sim, state);
 
   const vigTutorial = tf.vignette;
@@ -147,7 +151,7 @@ export function buildHudView(i: HudViewInput): HudView {
       visible: !hide.course,
     },
     carried: state.carried,
-    capacity: state.carryCapacity,
+    capacity: state.carryCapacity - sim.treasure.carried.length, // a carried bottle takes a slot (shown beside the hotbar)
     tripBonusPct: tripBonusPct(sim.combo.liveTripBest),
     chain,
     action,
@@ -159,6 +163,7 @@ export function buildHudView(i: HudViewInput): HudView {
     edgeArrow: edgeArrow(i, target),
     vignette,
     hide,
+    sea: seaHudView(sim),
   };
 }
 

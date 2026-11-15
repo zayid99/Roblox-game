@@ -423,7 +423,7 @@ export class GameRenderer {
     this.seaStrength = Math.max(0, Math.min(1, this.seaStrength + (ev ? dt : -dt)));
     if (ev) this.seaEvent = ev;
     this.seaFx.update({
-      dt, time: t, event: this.seaStrength > 0 ? this.seaEvent : null, strength: this.seaStrength, player: player.pos,
+      dt, time: t, event: this.seaStrength > 0 ? this.seaEvent : null, strength: this.seaStrength, player: player.pos, camera: this.camera.position,
       reduceMotion: reduce, lowTier: this.params.tier === 'low',
     });
   }

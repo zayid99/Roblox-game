@@ -79,7 +79,7 @@ export type TreasurePrizeKind = 'cash' | 'pearls' | 'boost' | 'luckyTide' | 'cre
 export type SeaEventId = 'rainbowRain' | 'treasureFleet' | 'calmSeas' | 'feedingFrenzy';
 /** HUD view of the sea: the event chip (heads-up countdown or time left) and the bottles in play. */
 export interface SeaHudView {
-  event: { id: SeaEventId; phase: 'headsUp' | 'active'; secondsLeft: number; frac: number /* 1 → 0 */ } | null;
+  event: { id: SeaEventId; name: string; sub: string; phase: 'headsUp' | 'active'; secondsLeft: number; frac: number /* 1 → 0 */ } | null;
   carriedBottles: BottleKind[];
   worldBottles: number;
 }

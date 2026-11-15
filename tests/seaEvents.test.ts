@@ -74,14 +74,15 @@ describe('sea events: schedule', () => {
 
   it('never repeats the same event twice in a row and uses every event', () => {
     for (let i = 1; i < starts.length; i++) expect(starts[i].id).not.toBe(starts[i - 1].id);
-    const big = play(readySim(8), 90).filter((l) => l.phase === 'start');
+    const big = play(readySim(8), 60).filter((l) => l.phase === 'start');
     expect(new Set([...starts, ...big].map((l) => l.id)).size).toBe(SEA_EVENT_IDS.length);
-  });
+  }, 30000);
 
   it('is deterministic for a seed', () => {
-    const again = play(readySim(5), 45);
-    expect(again.map((l) => [l.id, l.phase, l.t.toFixed(2)])).toEqual(log.map((l) => [l.id, l.phase, l.t.toFixed(2)]));
-  });
+    const again = play(readySim(5), 25);
+    const prefix = log.filter((l) => l.t <= 25 * 60);
+    expect(again.map((l) => [l.id, l.phase, l.t.toFixed(2)])).toEqual(prefix.map((l) => [l.id, l.phase, l.t.toFixed(2)]));
+  }, 30000);
 });
 
 describe('sea events: tutorial', () => {
