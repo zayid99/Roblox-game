@@ -39,7 +39,11 @@ export const HINT = {
   doubleJumpHeight: 1.5,
   lighthouseRadius: 12,
   seaFalls: 3,
-  queueTtlSec: 15,
+  queueTtlSec: 25,
+  /** Quiet time after the tutorial ends: the hand-over has its own paced messages (r1 F7). */
+  afterFtueSec: 15,
+  /** Minimum time between two hint toasts. */
+  gapSec: 4,
 };
 
 interface Pending {
@@ -63,6 +67,8 @@ export class Hints {
   private dragUntil = -1;
   private seaSolid = -1;
   private seaStreak = 0;
+  private quietUntil = -1;
+  private lastToastAt = -Infinity;
 
   constructor(private readonly deps: HintsDeps) {}
 
@@ -79,6 +85,7 @@ export class Hints {
     this.t += realDt;
     const step = ctx.ftueStep;
     if (this.prevStep === 'release' && step !== 'release' && this.releaseDoneAt < 0) this.markReleaseDone(ctx.lastLookAt);
+    if (this.prevStep && step === null) this.quietUntil = this.t + HINT.afterFtueSec;
     this.prevStep = step;
 
     const prompt = this.dragToLook(ctx);
@@ -86,7 +93,7 @@ export class Hints {
 
     for (let i = this.queue.length - 1; i >= 0; i--) if (this.t - this.queue[i].at > HINT.queueTtlSec) this.queue.splice(i, 1);
     this.checkState(realDt, sim, state);
-    if (ctx.toastBusy) return prompt;
+    if (ctx.toastBusy || this.t - this.lastToastAt < HINT.gapSec) return prompt;
     const i = this.queue.findIndex((q) => !ctx.surge || q.wave);
     if (i >= 0) {
       const [q] = this.queue.splice(i, 1);
@@ -99,6 +106,7 @@ export class Hints {
         this.homeArrowUntil = this.t + HINT.homeArrowSec;
       }
       this.deps.toast(q.spec);
+      this.lastToastAt = this.t;
     }
     return prompt;
   }
@@ -149,7 +157,8 @@ export class Hints {
   /** Queues a once-only hint (marked seen when queued, so it can never show twice). */
   private once(id: string, spec: ToastSpec, wave = false): void {
     // Not during the FTUE: it would be marked seen, then shown out of context after it (or never).
-    if (this.prevStep) return;
+    // Nor in the quiet seconds right after it: not marked seen, so the next real case hints.
+    if (this.prevStep || this.t < this.quietUntil) return;
     if (this.deps.seen(id) || this.queue.some((q) => q.id === id)) return;
     this.deps.markSeen(id);
     this.queue.push({ id, spec, at: this.t, wave });
