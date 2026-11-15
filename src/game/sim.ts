@@ -7,12 +7,16 @@ import { creatureIncome, pickSpecies, rollCreature, RARITIES, type CreatureRef }
 import { deliveryMult } from './hatchery';
 import { PlayerSim, type PlayerInput } from './player';
 import { inPerfectWindow, rateRelease } from './predict';
+import { applyReward } from './rewards';
 import { Rng } from './rng';
+import { SeaEventSim, type SeaSignal } from './seaEvents';
 import { GameState } from './state';
+import { openBottle, TreasureSim, type Bottle } from './treasure';
 import { WaveSim } from './wave';
 import { ZONES } from './zones';
 
-import type { ReleaseQuality, SimEvent, SimOverrides, WildCreature } from '../contracts';
+import type { BottleKind, ReleaseQuality, SeaEventId, SimEvent, SimOverrides, WildCreature } from '../contracts';
+import type { PlayerStats } from './player';
 export type { SimEvent, WildCreature } from '../contracts';
 
 export const SPLASH_TIME = 1.6;
@@ -51,6 +55,16 @@ export class GameSim {
   /** True once the player has been splashed during the current surge. */
   splashedThisSurge = false;
 
+  // ---- Treasure Bottles and Sea Events (src/game/treasure.ts, src/game/seaEvents.ts) ----
+  /** Bottles in the world and in the player's hands. Own Rng, so creature rolls are unchanged. */
+  readonly treasure: TreasureSim;
+  /** The session's sea-event clock. Own Rng. */
+  readonly sea: SeaEventSim;
+  /** Set by the lead every frame: a tutorial (or replay) is running, so no bottles and no sea events. */
+  tutorialActive = false;
+  /** Events raised between steps (debug hooks), emitted at the start of the next step. */
+  private readonly queued: SimEvent[] = [];
+
   private readonly rng: Rng;
   private readonly islandBySolid = new Map<number, Island>();
   private readonly padById = new Map<number, Pad>();
@@ -69,7 +83,10 @@ export class GameSim {
     this.course = generateCourse(opts.courseSeed);
     this.state = state;
     this.wave = new WaveSim(this.course.endZ - 40);
-    this.rng = new Rng(opts.rngSeed ?? Date.now());
+    const seed = opts.rngSeed ?? Date.now();
+    this.rng = new Rng(seed);
+    this.treasure = new TreasureSim(this.course, new Rng((seed ^ 0x5bd1e995) >>> 0));
+    this.sea = new SeaEventSim((seed ^ 0x27d4eb2d) >>> 0);
     this.featuredSpecies = opts.featuredSpecies ?? null;
     this.checkpoint = this.course.homeSpawn.clone();
     this.islandBySolid.set(this.course.home.id, this.course.homeIsland);
@@ -104,8 +121,10 @@ export class GameSim {
     for (const island of this.course.islands) {
       const rarity = this.course.zones[island.zone].def.rarity;
       for (const p of island.spawnPoints) {
-        if (!this.rng.chance(ECONOMY.spawnChance)) continue;
+        // Sea events: Feeding Frenzy fills every spawn point, Rainbow Rain gives each creature an extra mutation roll.
+        if (!this.rng.chance(this.sea.active === 'feedingFrenzy' ? 1 : ECONOMY.spawnChance)) continue;
         const c = rollCreature(rarity, golden, this.rng, this.featuredSpecies);
+        if (this.sea.active === 'rainbowRain') c.mutation = this.sea.boostMutation(c.mutation, golden);
         this.wild.push(this.makeWild(c, p, island, golden));
       }
     }
@@ -206,12 +225,17 @@ export class GameSim {
 
   step(dt: number, input: PlayerInput): void {
     this.events.length = 0;
+    if (this.queued.length) {
+      this.events.push(...this.queued);
+      this.queued.length = 0;
+    }
     this.time += dt;
     this.carryFullCooldown = Math.max(0, this.carryFullCooldown - dt);
     for (const a of this.drifting) anchorPosAt(a, this.time, a.pos);
     this.updateStones();
 
-    this.wave.frozen = this.overrides.waveFrozen;
+    this.updateSea(dt);
+    this.wave.frozen = this.overrides.waveFrozen || this.sea.freezesWave; // Calm Seas stops the countdown
     this.updateWave(dt);
 
     if (this.splashTime > 0) {
@@ -255,6 +279,10 @@ export class GameSim {
         this.events.push({ type: 'surgeEnd', golden: wasGolden, big: wasBig, number: w.count, survived: this.survivedSurge() });
         this.respawnCreatures(wasGolden);
         if (wasBig) this.guaranteeBigWaveCreature(wasGolden);
+        if (this.treasureAllowed()) {
+          const b = this.treasure.afterWave(wasGolden, wasBig, this.state.bestZone, this.time, this.occupiedSpots());
+          if (b) this.events.push(bottleSpawnEvent(b, 'wave'));
+        }
       }
     }
     if (this.wave.phase === 'surge') {
@@ -271,6 +299,8 @@ export class GameSim {
         this.events.push({ type: 'washed', uids: this.washed.slice() });
         this.washed.length = 0;
       }
+      const gone = this.treasure.wash(front);
+      if (gone.length) this.events.push({ type: 'bottleLost', kinds: gone.map((b) => b.kind), how: 'washed' });
     }
   }
 
@@ -326,7 +356,7 @@ export class GameSim {
   private updatePlayer(dt: number, input: PlayerInput): void {
     const player = this.player;
     player.time = this.time - dt;
-    player.step(dt, input, this.state.stats, this.course);
+    player.step(dt, input, this.playerStats(), this.course);
 
     for (const ev of player.events) {
       this.events.push({ type: 'player', event: ev });
@@ -368,6 +398,7 @@ export class GameSim {
     if (timedOut > 0) this.events.push({ type: 'chainEnd', count: timedOut, reason: 'timeout' });
 
     if (this.state.carried.length > 0 && this.isOnHome()) this.deliverHome();
+    if (this.treasure.carried.length > 0 && this.isOnHome()) this.openBottles();
 
     const zone = zoneAtZ(this.course, player.pos.z);
     if (zone !== this.zone) {
@@ -399,6 +430,8 @@ export class GameSim {
     const practice = this.overrides.practiceWave;
     // Practice wave: the creatures float off and snap back; `lost` lists them but they are kept.
     const lost = practice ? this.state.carried.map((c) => ({ ...c })) : this.state.loseCarried();
+    // The wave takes carried bottles like creatures (kept in the practice wave).
+    if (!practice && this.treasure.carried.length) this.events.push({ type: 'bottleLost', kinds: this.treasure.takeCarried().map((b) => b.kind), how: 'splash' });
     this.endChain('splash');
     this.events.push({ type: 'splash', lost, practice });
   }
@@ -456,11 +489,12 @@ export class GameSim {
 
   private collectNearby(): void {
     const p = this.player.pos;
+    this.collectBottle();
     for (let i = this.wild.length - 1; i >= 0; i--) {
       const c = this.wild[i];
       if (Math.abs(c.pos.y - p.y) > 2.5) continue;
       if (Math.hypot(c.pos.x - p.x, c.pos.z - p.z) > 1.7) continue;
-      if (!this.state.canCarryMore()) {
+      if (!this.state.canCarryMore() || this.carryFree() <= 0) {
         if (this.carryFullCooldown <= 0) {
           this.events.push({ type: 'carryFull' });
           this.carryFullCooldown = 2.5;
@@ -475,4 +509,107 @@ export class GameSim {
       this.events.push({ type: 'collect', creature: c, isNewSpecies, isNewMutation });
     }
   }
+
+  // ================================================================ Treasure Bottles and Sea Events
+  // Hooks: step() → updateSea, updateWave → afterWave/wash, collectNearby → collectBottle, splashPlayer → lose,
+  // updatePlayer → openBottles at home, respawnCreatures → Frenzy/Rainbow odds, playerStats → Calm Seas speed.
+
+  /** Carry slots left: creatures and bottles share them. */
+  carryFree(): number {
+    return this.state.carryCapacity - this.state.carried.length - this.treasure.carried.length;
+  }
+
+  /** Bottles only wash up once the tutorial is over and none is running. */
+  private treasureAllowed(): boolean {
+    return this.state.ftue.done && !this.tutorialActive && !this.overrides.waveFrozen && !this.overrides.practiceWave;
+  }
+
+  private occupiedSpots(): Vector3[] {
+    return this.wild.map((c) => c.pos);
+  }
+
+  /** Movement stats for this step (Calm Seas: faster running). */
+  private playerStats(): PlayerStats {
+    const s = this.state.stats;
+    const k = this.sea.runSpeedMult;
+    if (k !== 1) s.runSpeed *= k;
+    return s;
+  }
+
+  /** Debug and tests: washes up a bottle now (the farthest reachable island unless `islandOrder` is given). */
+  spawnBottle(kind: BottleKind = 'normal', islandOrder?: number): Bottle | null {
+    const island = islandOrder === undefined ? undefined : this.course.islands.find((i) => i.order === islandOrder);
+    const b = this.treasure.spawn(kind, this.state.bestZone, this.time, this.occupiedSpots(), island);
+    if (b) this.queued.push(bottleSpawnEvent(b, 'debug'));
+    return b;
+  }
+
+  /** Debug and tests: starts a sea event now (with its 15 s heads-up unless skipHeadsUp). */
+  forceSeaEvent(id?: SeaEventId, skipHeadsUp = false): void {
+    this.sea.force(id, skipHeadsUp);
+  }
+
+  private collectBottle(): void {
+    if (!this.treasure.world.length) return;
+    const b = this.treasure.tryPickUp(this.player.pos, this.carryFree());
+    if (b) this.events.push({ type: 'bottlePickup', uid: b.uid, kind: b.kind });
+    else if (this.carryFullCooldown <= 0 && this.treasure.near(this.player.pos)) {
+      this.events.push({ type: 'carryFull' });
+      this.carryFullCooldown = 2.5;
+    }
+  }
+
+  /** Home with bottles: each opens, its prize goes straight into the state. */
+  private openBottles(): void {
+    for (const b of this.treasure.takeCarried()) {
+      const { prize, reward } = openBottle(this.state, b.kind, this.treasure.rng);
+      const { discovery } = applyReward(this.state, reward);
+      this.events.push({ type: 'bottleOpen', kind: b.kind, prize, reward, discovery });
+    }
+  }
+
+  private updateSea(dt: number): void {
+    const blocked = !this.state.ftue.done || this.tutorialActive || this.overrides.waveFrozen || this.overrides.practiceWave;
+    this.sea.update(dt, { blocked, wavePhase: this.wave.phase, waveTimer: this.wave.timer, waveFrozen: this.overrides.waveFrozen });
+    const signals = this.sea.signals;
+    for (let i = 0; i < signals.length; i++) this.onSeaSignal(signals[i]);
+    signals.length = 0;
+  }
+
+  private onSeaSignal(s: SeaSignal): void {
+    if (s.phase === 'refill') {
+      this.fillSpawnPoints();
+      return;
+    }
+    this.events.push({ type: 'seaEvent', id: s.id, phase: s.phase });
+    if (s.phase !== 'start') return;
+    if (s.id === 'feedingFrenzy') this.fillSpawnPoints();
+    else if (s.id === 'treasureFleet') {
+      for (const b of this.treasure.fleet(this.state.bestZone, this.time, this.occupiedSpots())) this.events.push(bottleSpawnEvent(b, 'fleet'));
+    } else if (s.id === 'rainbowRain') {
+      // The rain touches every creature already out: an extra mutation roll (an upgrade pops in as a new creature).
+      for (let i = 0; i < this.wild.length; i++) {
+        const c = this.wild[i];
+        const m = this.sea.boostMutation(c.mutation, c.golden);
+        if (m !== c.mutation) this.wild[i] = this.makeWild({ speciesId: c.speciesId, mutation: m }, c.pos, c.island, c.golden);
+      }
+    }
+  }
+
+  /** Feeding Frenzy: a creature on every empty spawn point (rolled with the sea Rng). */
+  private fillSpawnPoints(): void {
+    const rng = this.sea.rng;
+    for (const island of this.course.islands) {
+      const rarity = this.course.zones[island.zone].def.rarity;
+      for (const p of island.spawnPoints) {
+        if (this.wild.some((c) => c.island === island && c.pos.distanceToSquared(p) < 0.01)) continue;
+        if (this.treasure.world.some((b) => b.pos.distanceToSquared(p) < 1)) continue;
+        this.wild.push(this.makeWild(rollCreature(rarity, false, rng, this.featuredSpecies), p, island, false));
+      }
+    }
+  }
+}
+
+function bottleSpawnEvent(b: Bottle, reason: 'wave' | 'fleet' | 'debug'): SimEvent {
+  return { type: 'bottleSpawn', uid: b.uid, kind: b.kind, pos: b.pos, islandOrder: b.islandOrder, reason };
 }
