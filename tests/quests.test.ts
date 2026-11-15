@@ -191,6 +191,7 @@ describe('Progression facade', () => {
     const { state, p, sim } = setup(true);
     expect(p.useLuckyTide(sim)).toBe(false);
     state.tokens.luckyTide = 2;
+    sim.wave.setFirstGolden(3); // the session's first wave is Golden anyway; use a plain one
     expect(sim.wave.golden).toBe(false);
     expect(p.useLuckyTide(sim)).toBe(true);
     expect(sim.wave.golden).toBe(true);

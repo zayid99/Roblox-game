@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, PHYS, SEA_RESPAWN_DELAY } from './config';
+import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, PHYS, SEA_RESPAWN_DELAY, WAVE } from './config';
 import { ComboTracker } from './combo';
 import { anchorPosAt, CRUMBLE, generateCourse, geyserStateAt, zoneAtZ, type Anchor, type Course, type GeyserState, type Island, type Pad, type Stone } from './course';
 import { playerOverlaps } from './physics';
@@ -69,6 +69,8 @@ export class GameSim {
     this.course = generateCourse(opts.courseSeed);
     this.state = state;
     this.wave = new WaveSim(this.course.endZ - 40);
+    // The session's first wave is Golden; in a tutorial session the first wave is the practice wave, so the one after it.
+    this.wave.setFirstGolden(state.ftue.done ? 0 : 1);
     this.rng = new Rng(opts.rngSeed ?? Date.now());
     this.featuredSpecies = opts.featuredSpecies ?? null;
     this.checkpoint = this.course.homeSpawn.clone();
@@ -212,6 +214,7 @@ export class GameSim {
     this.updateStones();
 
     this.wave.frozen = this.overrides.waveFrozen;
+    this.wave.track(this.player.pos.z, this.warningLength());
     this.updateWave(dt);
 
     if (this.splashTime > 0) {
@@ -239,6 +242,13 @@ export class GameSim {
     }
 
     this.state.tick(dt);
+  }
+
+  /** How long the warning before the coming surge lasts, from where the player is (see WAVE). */
+  warningLength(): number {
+    if (this.overrides.practiceWave) return WAVE.warningPractice;
+    const zone = zoneAtZ(this.course, this.player.pos.z);
+    return zone < 3 ? WAVE.warningEarly : zone < 5 ? WAVE.warning : WAVE.warningLate;
   }
 
   private updateWave(dt: number): void {

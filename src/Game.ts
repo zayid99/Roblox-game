@@ -9,7 +9,7 @@ import type {
 import { TimeScale } from './core/timeScale';
 import { buildAudioFrame, buildHudView, buildRenderFrame, lastReticle } from './core/views';
 import { weekKey } from './game/clock';
-import { HOME_FRONT_Z, HOME_TOP, WAVE } from './game/config';
+import { HOME_FRONT_Z, HOME_TOP } from './game/config';
 import { creatureIncome, getSpecies, RARITIES, SPECIES, type CreatureRef } from './game/creatures';
 import { formatCash, formatIncome, type UpgradeKey } from './game/economy';
 import { featuredSpeciesFor } from './game/featured';
@@ -651,7 +651,7 @@ export class Game {
     } else if (DEBUG && code === 'F3') {
       // Calm: skip to the warning (horn, banner, countdown). Warning: start the surge now.
       const w = this.sim.wave;
-      if (w.phase === 'calm') w.setTimer(WAVE.warning + 0.05);
+      if (w.phase === 'calm') w.setTimer(w.warningLen + 0.05);
       else w.forceSurge();
     }
   }

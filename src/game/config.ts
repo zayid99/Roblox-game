@@ -44,7 +44,22 @@ export const PHYS = {
 export const WAVE = {
   firstInterval: 90,
   interval: 70,
+  /** Warning (horn and banner) before the surge, by where the player is when it sounds: Stormy Seas and Kraken Deep. */
   warning: 8,
+  /** Warning at home and in the first three zones (a lighthouse or home is never more than a few seconds away). */
+  warningEarly: 6,
+  /** Warning from Volcano Bay on: the escapes there cross the longest gaps. */
+  warningLate: 12,
+  /** The tutorial's practice wave. */
+  warningPractice: 5,
+  /**
+   * The surge rises this far beyond the player (m) instead of at the far end of the course, so the wall
+   * arrives about 3 s after it starts instead of after a long empty run across the zones the player is not in.
+   */
+  lead: 120,
+  /** Once the wall is this far past the player (they are behind it), it runs on home passBoost times faster. */
+  passGap: 25,
+  passBoost: 4,
   speed: 42,
   /** How far behind the front the wall still splashes you. */
   thickness: 7,
