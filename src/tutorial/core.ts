@@ -94,6 +94,8 @@ export class TutorialCore {
   private readonly startPos = new Vector3();
   private moved = false;
   private edgeIdle = 0;
+  /** The idle escalation (big pill, camera nudge toward the hook) fired this grab step. */
+  private idleNudged = false;
   // swing tracking (persisted per session)
   private completedSwings = 0;
   private grabbedSolid: Solid | null = null;
@@ -132,9 +134,14 @@ export class TutorialCore {
   private boughtBaseline = -1;
   private lastBuyKey: UpgradeKey | null = null;
   private closeAt = -1;
+  /** Seconds standing calm on home in the shop step with no panel, and the threshold for the auto-open. */
+  private shopIdle = 0;
+  private shopAutoAt = TIMING.shopAutoOpenMs / 1000;
   // ready
-  private controlsUntil = -1;
+  private controlsShownAt = -1;
   private controlsClosed = false;
+  /** Wave-safety chip target last frame (hysteresis, r1 F12). */
+  private safeIcon: IconId | null = null;
   /** True while a Settings → Replay run is in progress. */
   replaying = false;
 
@@ -189,7 +196,7 @@ export class TutorialCore {
     this.bannerUntil = -1;
     this.fail = this.stamp = null;
     this.controlsClosed = false;
-    this.controlsUntil = -1;
+    this.controlsShownAt = -1;
     this.log.begin(replay);
     if (idx(step) <= idx('collect')) {
       this.cmds.push({ type: 'respawnFtue' });
@@ -410,6 +417,7 @@ export class TutorialCore {
         if (sim) this.startPos.copy(sim.player.pos);
         this.moved = false;
         this.edgeIdle = 0;
+        this.idleNudged = false;
         break;
       case 'collect':
         this.nudged = false;
@@ -426,6 +434,8 @@ export class TutorialCore {
         break;
       case 'shop':
         if (this.boughtBaseline < 0 && state) this.boughtBaseline = state.counters.upgradesBought;
+        this.shopIdle = 0;
+        this.shopAutoAt = TIMING.shopAutoOpenMs / 1000;
         break;
       case 'wave':
         if (this.boughtBaseline < 0 && state) this.boughtBaseline = state.counters.upgradesBought;
@@ -435,7 +445,7 @@ export class TutorialCore {
       case 'ready':
         if (state) state.ftue.done = true; // Progression shows the tracker and pops Index + FREE
         this.banner(COPY.readyBanner, 'sun', TIMING.readyBannerMs);
-        this.controlsUntil = this.bannerUntil + TIMING.controlsMs / 1000;
+        this.controlsShownAt = -1;
         break;
     }
   }
@@ -571,6 +581,14 @@ export class TutorialCore {
         this.edgeIdle = nearEdge ? this.edgeIdle + realDt : 0;
         if (this.edgeIdle * 1000 >= TIMING.grabEdgeIdleMs) this.log.hint('edgeIdle');
         if (!this.moved && inStep * 1000 >= TIMING.grabNoMoveMs) this.log.hint('noMove');
+        // r1 F11: still idle after 8 s. Escalate once: the camera turns toward the hook (the pill grows, an arrow
+        // and a trail point at the edge, and on touch the JUMP button pulses; see buildPrompt/buildGuides).
+        if (this.idleBig(sim) && !this.idleNudged) {
+          this.idleNudged = true;
+          this.log.hint('idle');
+          const hook = sim.course.gaps[0]?.anchors[0];
+          if (hook && !this.deps.reduceMotion()) this.pendingFx.push({ type: 'cameraNudge', toward: hook.pos.clone(), degrees: 25, ms: 900 });
+        }
         break;
       }
       case 'collect': {
@@ -614,10 +632,34 @@ export class TutorialCore {
           break;
         }
         if (inStep * 1000 >= TIMING.shopSpotlightMs && this.panel !== 'shop') this.log.hint('shopSpotlight');
+        // r1 F2 fallback: a player who cannot find (or click) the Shop tile gets the Shop opened for them, but
+        // only at a calm moment on home (not mid-run, not under a banner).
+        if (!this.panel && sim.isOnHome() && p.mode === 'ground' && this.now >= this.bannerUntil) {
+          this.shopIdle += realDt;
+          if (this.shopIdle >= this.shopAutoAt) {
+            this.shopIdle = 0;
+            this.shopAutoAt = TIMING.shopReopenMs / 1000;
+            this.log.hint('shopAutoOpen');
+            this.cmds.push({ type: 'openPanel', kind: 'shop', tab: 'upgrades' });
+          }
+        } else if (this.panel) this.shopIdle = 0;
         break;
-      case 'ready':
-        if (this.now >= this.bannerUntil && (this.controlsClosed || this.now >= this.controlsUntil)) this.finish(false);
+      case 'ready': {
+        if (this.now < this.bannerUntil) break;
+        // The Controls card is a desktop thing (touch players already used the stick and JUMP), and it only
+        // shows while standing on home, never over a swing (r1 F7). No calm moment soon: finish without it.
+        if (this.isTouch() || this.controlsClosed) {
+          this.finish(false);
+          break;
+        }
+        if (this.controlsShownAt < 0) {
+          if (this.controlsCalm(sim)) this.controlsShownAt = this.now;
+          else if ((this.now - this.bannerUntil) * 1000 >= TIMING.readyWaitMs) this.finish(false);
+        } else if ((this.now - this.controlsShownAt) * 1000 >= TIMING.controlsMs || p.mode === 'swing') {
+          this.finish(false);
+        }
         break;
+      }
       default:
         break;
     }
@@ -710,6 +752,15 @@ export class TutorialCore {
     return this.deps.device() === 'touch';
   }
 
+  /** Grab step, nobody touched anything for TIMING.grabIdleMs (standing on the start). */
+  private idleBig(sim: GameSim): boolean {
+    return this.step === 'grab' && !this.moved && (this.now - this.stepStart) * 1000 >= TIMING.grabIdleMs && sim.player.mode === 'ground';
+  }
+
+  private controlsCalm(sim: GameSim): boolean {
+    return sim.isOnHome() && sim.player.mode === 'ground' && !this.panel;
+  }
+
   private buildFrame(sim: GameSim, state: GameState, commands: TutorialCommand[]): TutorialFrame {
     const support = this.support();
     const slowed = this.scale < 0.999;
@@ -742,7 +793,9 @@ export class TutorialCore {
     if (!state.ftue.rewarded.includes(voyageRewardKey(1)) && idx(step) < idx('home')) hide.cash = true;
     base.hide = hide;
     base.skipVisible = step !== 'ready';
-    base.controlsCard = step === 'ready' && this.now >= this.bannerUntil && !this.controlsClosed;
+    base.controlsCard = step === 'ready' && this.controlsShownAt >= 0 && !this.controlsClosed;
+    // A step that wants a HUD click: desktop frees the pointer lock (r1 F2).
+    base.needsCursor = base.controlsCard || (step === 'shop' && !this.shopDone && !this.panel);
 
     this.buildGuides(sim, state, base, guides);
     base.prompt = this.buildPrompt(sim, state, support);
@@ -805,7 +858,7 @@ export class TutorialCore {
       }
       case 'shop':
         if (this.panel === 'shop') return { id: 'shop:buy', headline: COPY.buyReach.headline, size: 'normal', fail: false, glyph: 'none' };
-        return { id: 'shop:open', headline: COPY.openShop.headline, size: 'normal', fail: false, glyph: touch ? 'none' : 'keyU' };
+        return { id: 'shop:open', headline: COPY.openShop.headline, sub: touch ? undefined : COPY.openShopDesktop.sub, size: 'normal', fail: false, glyph: touch ? 'none' : 'keyU' };
       case 'wave':
         return { id: 'wave', headline: COPY.wave.headline, size: 'normal', fail: false, glyph: 'none' };
       default:
@@ -818,7 +871,7 @@ export class TutorialCore {
     const line = touch ? COPY.grabTouch : COPY.grabDesktop;
     const inStep = (this.now - this.stepStart) * 1000;
     const noMove = !this.moved && inStep >= TIMING.grabNoMoveMs && sim.player.mode === 'ground';
-    const big = this.edgeIdle * 1000 >= TIMING.grabEdgeIdleMs;
+    const big = this.edgeIdle * 1000 >= TIMING.grabEdgeIdleMs || this.idleBig(sim);
     return {
       id: 'grab',
       headline: line.headline,
@@ -881,6 +934,11 @@ export class TutorialCore {
         g.ring = { pos: this.v2.set(gap1.pos.x, HOME_TOP, HOME_FRONT_Z + 0.8), radius: 1.6, label: COPY.jumpHere };
         g.hookTag = { anchorId: gap1.id, text: COPY.hookTag };
         if (this.edgeIdle * 1000 >= TIMING.grabEdgeIdleMs) g.arrow = { pos: gap1.pos };
+        else if (this.idleBig(sim)) {
+          // Idle from the start: an arrow over the JUMP HERE ring and a trail to it show which way to run.
+          g.arrow = { pos: this.v3.set(gap1.pos.x, HOME_TOP + 2.2, HOME_FRONT_Z + 0.8) };
+          g.trail = this.makeTrail([p.pos, this.edgePos.set(gap1.pos.x, HOME_TOP, HOME_FRONT_Z + 0.8)]);
+        }
         break;
       }
       case 'collect': {
@@ -972,19 +1030,27 @@ export class TutorialCore {
     const p = sim.player.pos;
     const speed = Math.max(1, state.stats.runSpeed);
     const homeD = p.z > HOME_FRONT_Z ? 0 : HOME_FRONT_Z + 2 - p.z;
-    let best: { pos: Vector3; icon: IconId; eta: number } = {
+    const home: { pos: Vector3; icon: IconId; eta: number } = {
       pos: this.edgePos.set(p.x, HOME_TOP, HOME_FRONT_Z + 2),
       icon: 'home',
       eta: homeD / speed,
     };
+    let pad: { pos: Vector3; icon: IconId; eta: number } | null = null;
     for (const lh of sim.course.lighthouses) {
       const c = lh.pad;
       const cx = (c.min.x + c.max.x) / 2;
       const cz = (c.min.z + c.max.z) / 2;
       if (Math.abs(cz - p.z) > 40) continue;
       const eta = Math.hypot(cx - p.x, cz - p.z) / speed;
-      if (eta < best.eta) best = { pos: this.v3.set(cx, c.max.y, cz), icon: 'lighthouse', eta };
+      if (!pad || eta < pad.eta) pad = { pos: this.v3.set(cx, c.max.y, cz), icon: 'lighthouse', eta };
     }
+    let best = pad && pad.eta < home.eta ? pad : home;
+    // r1 F12: the chip flipped "Home 2 s" / "Pad 2 s" every few frames when both were about as close. Keep
+    // the previous choice unless the other one is clearly (1 s) quicker.
+    const prev = this.safeIcon === 'home' ? home : this.safeIcon === 'lighthouse' ? pad : null;
+    if (prev && prev !== best && prev.eta - best.eta < 1) best = prev;
+    this.safeIcon = best.icon;
     return best;
   }
+
 }

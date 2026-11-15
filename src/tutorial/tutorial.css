@@ -54,6 +54,11 @@ html.no-po .tut-t { -webkit-text-stroke: 0; text-shadow: 2px 0 0 var(--ink), -2p
 .tut[data-layout] .tut-pill-wrap.is-jump .tut-pill[data-size] { min-height: 40px; padding: 4px 18px; gap: 0; }
 .tut[data-layout] .tut-pill-wrap.is-jump .tut-pill[data-size] .tut-head { font-size: 20px; }
 .tut[data-layout] .tut-pill-wrap.is-jump .tut-glyph { display: none; }
+/* Short landscape phones: a "big" (escalated) low pill would climb over the character; the JUMP pulse and the
+   arrow carry the escalation there instead. */
+.tut[data-layout="landscape"] .tut-pill-wrap.is-low .tut-pill[data-size="big"] { min-height: 46px; }
+.tut[data-layout="landscape"] .tut-pill-wrap.is-low .tut-pill[data-size="big"] .tut-head { font-size: 20px; }
+.tut[data-layout="landscape"] .tut-pill-wrap.is-low .tut-pill[data-size="big"] .tut-glyph { transform: none; margin: 0; }
 .tut-pill-wrap.is-instant { transition: none; }
 
 .tut-pill {
