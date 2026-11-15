@@ -144,6 +144,8 @@ export class TutorialCore {
   private safeIcon: IconId | null = null;
   /** True while a Settings → Replay run is in progress. */
   replaying = false;
+  /** The ready step ended (desktop) before a calm moment on home: the lead shows the card at the next one. */
+  controlsPending = false;
 
   // scratch
   private readonly trail: Vector3[] = Array.from({ length: 6 }, () => new Vector3());
@@ -654,7 +656,10 @@ export class TutorialCore {
         }
         if (this.controlsShownAt < 0) {
           if (this.controlsCalm(sim)) this.controlsShownAt = this.now;
-          else if ((this.now - this.bannerUntil) * 1000 >= TIMING.readyWaitMs) this.finish(false);
+          else if ((this.now - this.bannerUntil) * 1000 >= TIMING.readyWaitMs) {
+            this.controlsPending = true;
+            this.finish(false);
+          }
         } else if ((this.now - this.controlsShownAt) * 1000 >= TIMING.controlsMs || p.mode === 'swing') {
           this.finish(false);
         }

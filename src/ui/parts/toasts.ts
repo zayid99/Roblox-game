@@ -34,9 +34,10 @@ export class ToastsPart {
     this.el = el('div', 'toasts');
   }
 
-  /** A toast on screen takes a click (a tap target or an action button): desktop frees the cursor for it. */
-  get tappable(): boolean {
-    return this.live.some((l) => !!(l.spec.onTap || l.spec.action));
+  /** A toast on screen takes a click: 'action' (a button: CLAIM, KEEP THEM, BUDDY), 'tap' (the toast itself), or null. */
+  get tappable(): 'action' | 'tap' | null {
+    if (this.live.some((l) => !!l.spec.action)) return 'action';
+    return this.live.some((l) => !!l.spec.onTap) ? 'tap' : null;
   }
 
   /** Any toast on screen or waiting. */

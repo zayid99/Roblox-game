@@ -1224,6 +1224,13 @@ export class Game {
       index: () => ({ text: COPY.nudge.indexNew, kind: 'info', icon: 'index', action: { label: COPY.nudge.see, icon: 'index', onTap: () => this.openPanel('index') } }),
     });
     if (r.toast) this.hud.toast(r.toast);
+    // The tutorial ended before a calm moment on home: the Controls card shows at the next one (desktop only).
+    if (this.tutorial.controlsPending && (this.input.touchMode || this.input.lastDevice === 'touch')) this.tutorial.controlsPending = false;
+    else if (this.tutorial.controlsPending && calm && sim.isOnHome() && this.pacer.pending === 0) {
+      this.tutorial.controlsPending = false;
+      this.input.unlock();
+      this.hud.showControlsCard(8000);
+    }
     this.hud.setRailNag('free', r.nag.free);
     this.hud.setRailNag('index', r.nag.index);
   }
@@ -1259,10 +1266,14 @@ export class Game {
    */
   private syncCursor(tf: TutorialFrame): void {
     this.input.holdCursor(!!tf.needsCursor);
-    const toast = this.hud.tappableToast && this.sim.player.mode !== 'swing';
+    // A button (CLAIM, KEEP THEM, BUDDY) frees it anywhere on the ground; a plain tappable toast only on home,
+    // so a run across the islands keeps its mouse look.
+    const kind = this.hud.tappableToast;
+    const sim = this.sim;
+    const toast = sim.player.mode !== 'swing' && (kind === 'action' || (kind === 'tap' && sim.isOnHome()));
     if (toast && !this.toastClick) this.input.unlock();
     this.toastClick = toast;
-    this.wantClick = !!tf.needsCursor || toast;
+    this.wantClick = !!tf.needsCursor || (kind !== null && !this.input.locked);
   }
 
   private onProgressEvent(e: ProgressEvent): void {

@@ -335,7 +335,7 @@ export class Hud {
   }
 
   /** A toast on screen takes a click (desktop frees the pointer lock for it). */
-  get tappableToast(): boolean {
+  get tappableToast(): 'action' | 'tap' | null {
     return this.toasts.tappable;
   }
 
@@ -509,6 +509,7 @@ export class Hud {
     }
   }
 
+  /** Desktop/touch controls card (Settings Help; after the tutorial, see Game.paceMessages). Any click closes it. */
   showControlsCard(ms: number): void {
     const card = el('div', 'controls-card card', `<div class="cc-h t-d">CONTROLS</div>${controlsCardHtml(this.ctx.touch(), (k) => this.hotkeyOn(k))}`);
     const scrim = el('div', 'cc-wrap');
