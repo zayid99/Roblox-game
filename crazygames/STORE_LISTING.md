@@ -4,15 +4,17 @@ Copy these into the CrazyGames Developer Portal form. Field names in the portal 
 
 ## Title
 
-Swing or Splash
+**Swing or Splash: Tsunami Obby** (recommended; ask CrazyGames support before renaming, and change the title on a different day from the cover so you can tell which one moved the click rate)
+
+Original: Swing or Splash
 
 ## Short description (one line)
 
-Swing across the sea on ropes, grab weird creatures, and get home before the giant wave hits.
+Rope-swinging tsunami obby: swing from island to island, grab funny creatures like Toastopus and Crab DJ, and get home before the giant wave hits!
 
 ## Description
 
-Swing or Splash is a 3D rope-swinging obby with a collecting twist. Run to the edge, jump, grab a hook and swing from island to island over the open sea. Every wave washes strange creatures onto the islands: a Toastopus, a Crab DJ, a Banana Shark and more than 30 others. Grab as many as you can carry and race home before the next wave arrives. If the wave catches you, it takes everything you are carrying.
+Swing or Splash is a 3D tsunami obby with rope swinging and creature collecting. Run to the edge, jump, grab a hook and swing from island to island over the open sea. Every wave washes strange creatures onto the islands: a Toastopus, a Crab DJ, a Banana Shark and more than 30 others. Grab as many as you can carry and race home before the next wave arrives. If the wave catches you, it takes everything you are carrying.
 
 Creatures you bring home sit on your pedestals and earn cash every second, even while you are away. Spend it on longer ropes, stronger swings, more carry slots and more pedestals. Longer ropes open new zones with rarer creatures, from the calm Shallows to Stormy Seas, Volcano Bay and the Secret Reef.
 
@@ -42,10 +44,10 @@ Creatures you bring home sit on your pedestals and earn cash every second, even 
 - JUMP button: tap to jump, hold to grab a hook and swing, release to let go
 - Drag the right side of the screen to look around
 
-## Category and tags (pick the closest ones the portal offers)
+## Category and tags
 
-- Category: Adventure (second choice: Action)
-- Tags: Obby, Parkour, 3D, Platformer, Collecting, Simulator, Jumping, Animal, Mobile, Mouse, 1 Player
+- **Category: Arcade** (where the biggest game with the same loop sits; Action is the backup).
+- **Tags, in this order** (the first one becomes the breadcrumb, Arcade › Obby): Obby, 3D, Collect, Idle, Parkour, Avoid, Mobile, plus Escape or Jumping if offered. Add Meme only if you feel the creatures read as meme-style. Drop low-value tags (Mouse, 1 Player, Platformer) if there is a limit.
 
 ## Other form answers
 
