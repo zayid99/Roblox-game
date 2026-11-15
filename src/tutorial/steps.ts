@@ -67,7 +67,7 @@ export const SWING_SUPPORT: readonly SwingSupport[] = [
 ];
 export const NO_SUPPORT: SwingSupport = { scale: 1, arc: false, pill: null };
 /** Struggle assist: 3 sea falls in a row on one gap → arc + 0.5× for the next 2 swings there. */
-export const STRUGGLE = { falls: 3, swings: 2, support: { scale: 0.5, arc: true, pill: 'normal' } as SwingSupport };
+export const STRUGGLE = { falls: 2, swings: 2, support: { scale: 0.5, arc: true, pill: 'normal' } as SwingSupport };
 
 export const ASSIST = {
   /** Window evaluation rate (real time). */

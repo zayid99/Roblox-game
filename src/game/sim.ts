@@ -50,6 +50,8 @@ export class GameSim {
   featuredSpecies: string | null = null;
   /** True once the player has been splashed during the current surge. */
   splashedThisSurge = false;
+  /** The stick input of the last step (Swing Assist predicts the release with it). */
+  readonly input: PlayerInput = { moveX: 0, moveZ: 0, jumpHeld: false, jumpPressed: false };
 
   private readonly rng: Rng;
   private readonly islandBySolid = new Map<number, Island>();
@@ -213,6 +215,9 @@ export class GameSim {
     for (const a of this.drifting) anchorPosAt(a, this.time, a.pos);
     this.updateStones();
 
+    this.input.moveX = input.moveX;
+    this.input.moveZ = input.moveZ;
+    this.input.jumpHeld = input.jumpHeld;
     this.wave.frozen = this.overrides.waveFrozen;
     this.wave.track(this.player.pos.z, this.warningLength());
     this.updateWave(dt);

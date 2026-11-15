@@ -3,6 +3,7 @@ import { Vector3 } from 'three';
 import { HOME_FRONT_Z, HOME_TOP } from '../game/config';
 import type { Solid } from '../game/course';
 import { getSpecies } from '../game/creatures';
+import { chooseSafeTarget } from '../game/guide';
 import { predictRelease } from '../game/predict';
 import type { ProgressEvent } from '../game/progression';
 import { voyageRewardKey } from '../game/quests';
@@ -969,22 +970,12 @@ export class TutorialCore {
 
   /** The nearer safe spot during a warning: home, or a lighthouse pad (§7.2 step 7). */
   private safeTarget(sim: GameSim, state: GameState): { pos: Vector3; icon: IconId; eta: number } | null {
-    const p = sim.player.pos;
-    const speed = Math.max(1, state.stats.runSpeed);
-    const homeD = p.z > HOME_FRONT_Z ? 0 : HOME_FRONT_Z + 2 - p.z;
-    let best: { pos: Vector3; icon: IconId; eta: number } = {
-      pos: this.edgePos.set(p.x, HOME_TOP, HOME_FRONT_Z + 2),
-      icon: 'home',
-      eta: homeD / speed,
-    };
-    for (const lh of sim.course.lighthouses) {
-      const c = lh.pad;
-      const cx = (c.min.x + c.max.x) / 2;
-      const cz = (c.min.z + c.max.z) / 2;
-      if (Math.abs(cz - p.z) > 40) continue;
-      const eta = Math.hypot(cx - p.x, cz - p.z) / speed;
-      if (eta < best.eta) best = { pos: this.v3.set(cx, c.max.y, cz), icon: 'lighthouse', eta };
-    }
-    return best;
+    // Sticky choice (guide.ts): the chip and beam no longer flip between two spots with about the same ETA.
+    const pick = chooseSafeTarget(sim, Math.max(1, state.stats.runSpeed), this.safeKey, this.v3);
+    this.safeKey = pick.key;
+    return { pos: this.v3, icon: pick.icon, eta: pick.eta };
   }
+
+  /** The safe spot chosen last (chooseSafeTarget key). */
+  private safeKey: number | null = null;
 }
