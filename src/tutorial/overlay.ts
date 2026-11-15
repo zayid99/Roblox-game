@@ -32,6 +32,8 @@ const CHECK_MS = 360; // check stamp 200 ms + exit 160 ms
 const STAMP_MS = 1000;
 /** Rope steps: the hook (and the rope above the player) fills the top centre, so the pill sits low instead. */
 const LOW_STEPS: ReadonlySet<string> = new Set(['grab', 'release']);
+/** Release prompts that phones show next to the JUMP button (never over the character, r1 F10). */
+const JUMP_SIDE: ReadonlySet<string> = new Set(['letGo', 'release:wait']);
 
 function layoutOf(w: number, h: number): 'desktop' | 'landscape' | 'portrait' {
   if (h > w) return 'portrait';
@@ -95,6 +97,7 @@ export class TutorialOverlay {
   private slow = false;
   private spotId: string | null = null;
   private controlsShown = false;
+  private urged: HTMLElement | null = null;
   private readonly icon: (id: IconId, size: number) => string;
 
   constructor(private readonly deps: TutorialOverlayDeps) {
@@ -211,7 +214,10 @@ export class TutorialOverlay {
       this.shownId = p.id;
       this.shownGlyphKey = '';
       // Placed when a prompt appears, so a pill never jumps while it is on screen.
-      this.pillWrap.classList.toggle('is-low', f.step !== null && LOW_STEPS.has(f.step));
+      const phoneTouch = this.device(f) === 'touch' && this.el.dataset.layout !== 'desktop';
+      const jumpSide = phoneTouch && JUMP_SIDE.has(p.id);
+      this.pillWrap.classList.toggle('is-jump', jumpSide);
+      this.pillWrap.classList.toggle('is-low', !jumpSide && f.step !== null && LOW_STEPS.has(f.step));
       this.pillWrap.classList.add('is-on');
       restart(this.pill, 'is-pop');
       this.deps.sound('tutorialStep');
@@ -350,6 +356,14 @@ export class TutorialOverlay {
   private renderTouchGhosts(f: TutorialFrame): void {
     const p = f.prompt;
     const touchPrompt = !!p && !p.stamp && (p.glyph === 'thumbHold' || (p.id === 'grab' && p.glyph === 'thumbDrag'));
+    // Idle at the start (big grab prompt): the real JUMP button pulses too.
+    const urge = !!p && p.id === 'grab' && p.size === 'big' && this.device(f) === 'touch';
+    const btn = urge ? this.deps.anchor('jump') : null;
+    if (btn !== this.urged) {
+      this.urged?.classList.remove('tut-urge');
+      btn?.classList.add('tut-urge');
+      this.urged = btn;
+    }
     const pt = touchPrompt ? this.deps.anchorPoint('jump') : null;
     this.jumpGhost.classList.toggle('is-on', !!pt && this.exitLeft <= 0);
     if (!pt || !p) return;

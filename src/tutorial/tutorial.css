@@ -45,6 +45,15 @@ html.no-po .tut-t { -webkit-text-stroke: 0; text-shadow: 2px 0 0 var(--ink), -2p
 .tut-pill-wrap.is-low { top: auto; bottom: 108px; }
 .tut[data-layout="landscape"] .tut-pill-wrap.is-low { top: auto; bottom: calc(var(--sb) + 64px); }
 .tut[data-layout="portrait"] .tut-pill-wrap.is-low { top: auto; bottom: calc(var(--sb) + 214px); }
+/* Phones, release step: the LET GO pill sits right above the JUMP button (where the thumb and the eye
+   already are) instead of over the character and the landing island (r1 F10). */
+.tut[data-layout="landscape"] .tut-pill-wrap.is-jump, .tut[data-layout="portrait"] .tut-pill-wrap.is-jump {
+  top: auto; left: auto; right: calc(var(--sr, 0px) + 10px); transform: none; width: auto; max-width: 46vw;
+  bottom: calc(var(--sb, 0px) + 28px + clamp(84px, 26vh, 120px)); }
+.tut[data-layout="portrait"] .tut-pill-wrap.is-jump { bottom: calc(var(--sb, 0px) + 150px); max-width: 60vw; }
+.tut[data-layout] .tut-pill-wrap.is-jump .tut-pill[data-size] { min-height: 40px; padding: 4px 18px; gap: 0; }
+.tut[data-layout] .tut-pill-wrap.is-jump .tut-pill[data-size] .tut-head { font-size: 20px; }
+.tut[data-layout] .tut-pill-wrap.is-jump .tut-glyph { display: none; }
 .tut-pill-wrap.is-instant { transition: none; }
 
 .tut-pill {
@@ -245,6 +254,19 @@ html.no-po .tut-t { -webkit-text-stroke: 0; text-shadow: 2px 0 0 var(--ink), -2p
 @keyframes tut-stamp { 0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(1); }
   80% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(1); } 100% { opacity: 0; transform: translate(-50%, -60%) rotate(-6deg) scale(1); } }
 @keyframes tut-card-in { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.8); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+/* ---------------------------------------------------------------- nudges outside the overlay (r1)
+   Idle at the start on touch: the real JUMP button pulses (overlay toggles .tut-urge on it). */
+.act.tut-urge { animation: tut-urge 900ms ease-in-out infinite; }
+@keyframes tut-urge { 0%, 100% { box-shadow: inset 0 0 0 2px rgba(255,255,255,.35), inset 0 -6px 0 var(--lip), 0 6px 0 var(--ink), 0 0 0 0 rgba(255,230,128,.0); }
+  50% { box-shadow: inset 0 0 0 2px rgba(255,255,255,.35), inset 0 -6px 0 var(--lip), 0 6px 0 var(--ink), 0 0 0 14px rgba(255,230,128,.75); } }
+/* A reward waiting unclaimed pulses its rail badge (pacer.ts, hud.setRailNag). */
+.tile.claim-nag .badge { animation: badgePop 260ms var(--ease-back) both, tut-nag 1400ms 300ms ease-in-out infinite; }
+@keyframes tut-nag { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 214, 64, 0); } 50% { transform: scale(1.3); box-shadow: 0 0 0 6px rgba(255, 214, 64, .65); } }
+/* The game freed the cursor for a HUD click (tutorial Shop step, a tappable toast). */
+.mouse-hint[data-mode="click"] { opacity: 1; background: var(--grass-lo); }
+.reduce-motion .act.tut-urge, .reduce-motion .tile.claim-nag .badge { animation: none; }
+@media (prefers-reduced-motion: reduce) { .act.tut-urge, .tile.claim-nag .badge { animation: none; } }
 
 /* Reduce motion: loops stop, pops become fades. */
 .tut--rm *, .tut--rm *::before, .tut--rm *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
