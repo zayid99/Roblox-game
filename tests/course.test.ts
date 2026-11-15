@@ -95,10 +95,10 @@ describe('every gap can be crossed', () => {
     }
   });
 
-  it('every gap of zones 2–5 has a buoy', () => {
+  it('every gap from the Coral Reef on (zones 2–7) has a buoy', () => {
     for (const gap of course.gaps) {
       const has = course.buoys.some((b) => b.pos.z < gap.from.solid.min.z && b.pos.z > gap.to.solid.max.z);
-      expect(has).toBe(gap.zone >= 1 && gap.zone <= 4);
+      expect(has).toBe(gap.zone >= 1);
     }
   });
 

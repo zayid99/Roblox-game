@@ -62,6 +62,8 @@ export interface Spring {
   zone: number;
   pos: Vector3;
   radius: number;
+  /** Top centre of its island: the bounce leans toward it. */
+  center?: Vector3;
 }
 
 /**
@@ -95,10 +97,14 @@ export type GeyserState = 'idle' | 'warning' | 'erupting';
 
 export const GEYSER = { idle: 4, warning: 1, erupt: 2, radius: 1.5 };
 export const GEYSER_PERIOD = GEYSER.idle + GEYSER.warning + GEYSER.erupt;
-export const DRIFT = { amp: 2.5, period: 4 };
-export const SWAY = { length: 7, angle: 0.34, period: 3.6 };
-/** Spring coral launch: straight up at launchVel; your run carries over, capped at maxHorizontal so a bounce stays readable. */
-export const SPRING = { radius: 1.1, launchVel: 22, maxHorizontal: 6 };
+export const DRIFT = { amp: 1.5, period: 4 };
+export const SWAY = { length: 7, angle: 0.22, period: 3.6 };
+/**
+ * Spring coral launch: straight up at launchVel; your run carries over, capped at maxHorizontal so a bounce
+ * comes down on the same island. Pads keep spawnClear from creature spawns (picking one up must not bounce you)
+ * and runLineClear off the running line between the hooks, endClear from the front and back edges.
+ */
+export const SPRING = { radius: 1.1, launchVel: 22, maxHorizontal: 2, spawnClear: 3.5, runLineClear: 2.2, endClear: 3.2 };
 export const CRUMBLE = { shake: 1.2, sunk: 3.2, rise: 0.8, size: 2.4, top: 2.4 };
 
 /** Where an anchor is at sim time t (drifting hooks move along x). */
@@ -357,7 +363,7 @@ export function generateCourse(seed = 20261105): Course {
   const frng = new Rng((seed ^ 0x5eed_b0e7) >>> 0);
   const buoys: Buoy[] = [];
   for (const gap of gaps) {
-    if (gap.zone < 1 || gap.zone > 4) continue;
+    if (gap.zone < 1) continue;
     const z = (gap.from.solid.min.z + gap.to.solid.max.z) / 2;
     const x = (anchorMidX(gap) + (frng.chance(0.5) ? 2 : -2));
     buoys.push({ id: nextId++, zone: gap.zone, pos: new Vector3(x, 1.2, z), radius: 1.4 });
@@ -372,17 +378,15 @@ export function generateCourse(seed = 20261105): Course {
     a.drift = { baseX: a.pos.x, amp: DRIFT.amp, period: DRIFT.period, phase: frng.range(0, Math.PI * 2) };
   }
 
-  // Volcano geysers (P1): one vent on each Volcano Bay island top, clear of the lighthouse.
+  // Volcano geysers (P1): one vent on each Volcano Bay island top, off the running line between the hooks, clear of
+  // creature spawns, away from the front and back edges. Not on the lighthouse island: its launch pad is the wave escape.
   const geysers: Geyser[] = [];
   const volcano = ZONES.findIndex((z) => z.name === 'Volcano Bay');
   for (const island of islands) {
     if (island.zone !== volcano) continue;
     const s = island.solid;
-    const lh = lighthouses.find((l) => l.tower.min.z >= s.min.z && l.tower.max.z <= s.max.z);
-    const cx = (s.min.x + s.max.x) / 2;
-    // Put the vent on the side away from the lighthouse (if any), near the back edge.
-    const side = lh ? (lh.tower.min.x + lh.tower.max.x) / 2 > cx ? -1 : 1 : 1;
-    const pos = new Vector3(cx + side * Math.min(2.5, (s.max.x - s.min.x) / 2 - 2), s.max.y, s.min.z + 2.2);
+    if (lighthouses.some((l) => l.tower.min.z >= s.min.z && l.tower.max.z <= s.max.z)) continue;
+    const pos = geyserSpot(island, gaps, lighthouses);
     geysers.push({ id: nextId++, zone: island.zone, pos, radius: GEYSER.radius, phase: frng.range(0, GEYSER_PERIOD) });
   }
 
@@ -413,20 +417,44 @@ export function generateCourse(seed = 20261105): Course {
     if (lighthouses.some((l) => l.tower.min.z >= s.min.z && l.tower.max.z <= s.max.z)) continue;
     const cx = (s.min.x + s.max.x) / 2;
     const half = (s.max.x - s.min.x) / 2;
-    const clear = (x: number, z: number) =>
-      island.spawnPoints.every((p) => Math.hypot(p.x - x, p.z - z) > 2.2) &&
+    const line = runLine(island, gaps);
+    const center = new Vector3(cx, s.max.y, (s.min.z + s.max.z) / 2);
+    const clear = (x: number, z: number, runClear = SPRING.runLineClear) =>
+      segDist(x, z, line.ax, line.az, line.bx, line.bz) > runClear &&
+      island.spawnPoints.every((p) => Math.hypot(p.x - x, p.z - z) > SPRING.spawnClear) &&
       geysers.every((g) => Math.hypot(g.pos.x - x, g.pos.z - z) > 3.4) &&
       lighthouses.every((l) => Math.hypot((l.tower.min.x + l.tower.max.x) / 2 - x, (l.tower.min.z + l.tower.max.z) / 2 - z) > 3.6) &&
       pads.every((p) => Math.hypot((p.min.x + p.max.x) / 2 - x, (p.min.z + p.max.z) / 2 - z) > 3.2);
     let side = lrng.chance(0.5) ? 1 : -1;
-    for (let attempt = 0; attempt < 40; attempt++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 40 && !placed; attempt++) {
       if (attempt === 20) side = -side;
       const x = cx + side * (half - SPRING.radius - lrng.range(0.4, 2.2));
-      const z = lrng.range(s.min.z + 2.2, s.max.z - 2.2);
+      const z = lrng.range(s.min.z + SPRING.endClear, s.max.z - SPRING.endClear);
       if (!clear(x, z)) continue;
-      springs.push({ id: nextId++, zone: island.zone, pos: new Vector3(x, s.max.y, z), radius: SPRING.radius });
-      break;
+      springs.push({ id: nextId++, zone: island.zone, pos: new Vector3(x, s.max.y, z), radius: SPRING.radius, center });
+      placed = true;
     }
+    // Crowded island: the clear spot farthest from the creatures; failing that, closer to the running line
+    // (still never touching a runner on it: pad radius + body half width) or nearer the ends.
+    let bestD = -1;
+    let bx = 0;
+    let bz = 0;
+    const relax: [number, number][] = [[SPRING.runLineClear, SPRING.endClear], [SPRING.radius + 0.5, SPRING.endClear], [SPRING.radius + 0.5, 2.2]];
+    for (const [runClear, endClear] of relax) {
+      for (let x = s.min.x + SPRING.radius + 0.4; !placed && bestD < 0 && x <= s.max.x - SPRING.radius - 0.4; x += 0.25) {
+        for (let z = s.min.z + endClear; z <= s.max.z - endClear; z += 0.25) {
+          if (!clear(x, z, runClear)) continue;
+          const d = Math.min(99, ...island.spawnPoints.map((p) => Math.hypot(p.x - x, p.z - z)));
+          if (d > bestD) {
+            bestD = d;
+            bx = x;
+            bz = z;
+          }
+        }
+      }
+    }
+    if (!placed && bestD >= 0) springs.push({ id: nextId++, zone: island.zone, pos: new Vector3(bx, s.max.y, bz), radius: SPRING.radius, center });
   }
 
   // Crumble stones: one in every gap of Stormy Seas, Kraken Deep and Volcano Bay, beside the gap's buoy (if any).
@@ -464,6 +492,61 @@ export function generateCourse(seed = 20261105): Course {
     springs,
     stones,
   };
+}
+
+/** Geyser vent clearances (m, from the vent centre). */
+export const GEYSER_CLEAR = { runLine: 3, spawn: 3.5, pad: 5, tower: 4, edge: 0.6, end: 4 };
+
+const segDist = (px: number, pz: number, ax: number, az: number, bx: number, bz: number) => {
+  const vx = bx - ax;
+  const vz = bz - az;
+  const l2 = vx * vx + vz * vz || 1;
+  const t = clamp(((px - ax) * vx + (pz - az) * vz) / l2, 0, 1);
+  return Math.hypot(px - (ax + vx * t), pz - (az + vz * t));
+};
+
+/**
+ * The island's running line: from where the incoming hooks drop the player (home-facing edge) to below the
+ * next gap's first hook (far edge).
+ */
+export function runLine(island: Island, gaps: readonly Gap[]): { ax: number; az: number; bx: number; bz: number } {
+  const s = island.solid;
+  const cx = (s.min.x + s.max.x) / 2;
+  const inGap = gaps.find((g) => g.to === island);
+  const outGap = gaps.find((g) => g.from === island);
+  const inA = inGap?.anchors[inGap.anchors.length - 1];
+  const outA = outGap?.anchors[0];
+  return { ax: inA ? clamp(inA.pos.x, s.min.x, s.max.x) : cx, az: s.max.z, bx: outA ? clamp(outA.pos.x, s.min.x, s.max.x) : cx, bz: s.min.z };
+}
+
+/**
+ * Best vent spot on an island: meets every GEYSER_CLEAR if it can (else the most clearance), with GEYSER_CLEAR.end
+ * to the front and back edges (a launched player drifting with the stick comes down on the island).
+ */
+function geyserSpot(island: Island, gaps: readonly Gap[], lighthouses: readonly Lighthouse[]): Vector3 {
+  const s = island.solid;
+  const r = GEYSER.radius + GEYSER_CLEAR.edge;
+  const line = runLine(island, gaps);
+  const lh = lighthouses.find((l) => l.tower.min.z >= s.min.z && l.tower.max.z <= s.max.z);
+  let best = new Vector3((s.min.x + s.max.x) / 2, s.max.y, s.max.z - 2.2);
+  let bestScore = -Infinity;
+  for (let x = s.min.x + r; x <= s.max.x - r + 1e-6; x += 0.25) {
+    for (let z = s.max.z - r; z >= s.min.z + r - 1e-6; z -= 0.25) {
+      let k = Math.min(segDist(x, z, line.ax, line.az, line.bx, line.bz) / GEYSER_CLEAR.runLine, Math.min(z - s.min.z, s.max.z - z) / GEYSER_CLEAR.end);
+      for (const p of island.spawnPoints) k = Math.min(k, Math.hypot(p.x - x, p.z - z) / GEYSER_CLEAR.spawn);
+      if (lh) {
+        const pad = lh.pad;
+        k = Math.min(k, Math.hypot((pad.min.x + pad.max.x) / 2 - x, (pad.min.z + pad.max.z) / 2 - z) / GEYSER_CLEAR.pad);
+        k = Math.min(k, Math.hypot((lh.tower.min.x + lh.tower.max.x) / 2 - x, (lh.tower.min.z + lh.tower.max.z) / 2 - z) / GEYSER_CLEAR.tower);
+      }
+      const score = Math.min(1, k) - 0.001 * Math.abs(z - (s.min.z + s.max.z) / 2);
+      if (score > bestScore) {
+        bestScore = score;
+        best = new Vector3(x, s.max.y, z);
+      }
+    }
+  }
+  return best;
 }
 
 function anchorMidX(gap: Gap): number {

@@ -43,7 +43,7 @@ export interface ReleaseRecord {
 }
 
 export const BUOY = { bounceVel: 19, keepHorizontal: 0.8, reflect: 0.9 };
-export const GEYSER_LAUNCH = { vel: 26, time: 0.4, surface: 1 };
+export const GEYSER_LAUNCH = { vel: 26, time: 0.4, surface: 1, keepHorizontal: 0.2 };
 
 export const NO_INPUT: PlayerInput = { moveX: 0, moveZ: 0, jumpHeld: false, jumpPressed: false };
 
@@ -141,7 +141,11 @@ export class PlayerSim {
   private lastAnchorId = -1;
   private sinceRelease = 99;
   private launchTime = 0;
-  private readonly sweep: SweepResult = { hitX: false, hitZ: false, hitY: 'none', floor: null };
+  /** True from a grab until the next landing: only a swing's flight gets the ledge grab, not a plain jump. */
+  private swungSinceGround = false;
+  /** True from a spring or geyser launch until the next landing or grab: air control is gentler (PHYS.bounceAirMax). */
+  private thrown = false;
+  private readonly sweep: SweepResult = { hitX: false, hitZ: false, hitY: 'none', floor: null, stepped: false };
 
   reset(at: Vector3, facingZ = -1): void {
     this.pos.copy(at);
@@ -157,6 +161,8 @@ export class PlayerSim {
     this.lastAnchorId = -1;
     this.sinceRelease = 99;
     this.launchTime = 0;
+    this.swungSinceGround = false;
+    this.thrown = false;
     this.groundSolid = null;
     this.padId = -1;
     this.bouncedOn = -1;
@@ -192,6 +198,8 @@ export class PlayerSim {
     this.lastAnchorId = o.lastAnchorId;
     this.sinceRelease = o.sinceRelease;
     this.launchTime = o.launchTime;
+    this.swungSinceGround = o.swungSinceGround;
+    this.thrown = o.thrown;
   }
 
   /** Where the current anchor is right now (drifting hooks move), or null when not attached. */
@@ -308,19 +316,24 @@ export class PlayerSim {
       }
       this.coyote = PHYS.coyoteTime;
     } else {
-      // Air control steers without killing the speed a swing gave you.
+      // Air control steers without killing the speed a swing gave you, but only pushes up to the fixed
+      // Run Speed up to PHYS.airMaxSpeed (a fast runner's swings would otherwise overshoot the islands).
+      const airMax = Math.min(this.thrown ? PHYS.bounceAirMax : PHYS.airMaxSpeed, stats.runSpeed);
       const before = Math.hypot(this.vel.x, this.vel.z);
-      const cap = Math.max(before, stats.runSpeed);
-      this.vel.x += wx * PHYS.airAccel * dt;
-      this.vel.z += wz * PHYS.airAccel * dt;
+      const cap = Math.max(before, airMax);
+      // Air brake: pulling the stick back against the flight bites harder, so an overshoot can be saved.
+      const base = this.thrown ? PHYS.airAccel * PHYS.thrownAccel : PHYS.airAccel;
+      const accel = wx * this.vel.x + wz * this.vel.z < 0 ? base * PHYS.airBrake : base;
+      this.vel.x += wx * accel * dt;
+      this.vel.z += wz * accel * dt;
       let speed = Math.hypot(this.vel.x, this.vel.z);
       if (speed > cap) {
         this.vel.x *= cap / speed;
         this.vel.z *= cap / speed;
         speed = cap;
       }
-      if (speed > stats.runSpeed) {
-        const slowed = Math.max(stats.runSpeed, speed - (speed - stats.runSpeed) * PHYS.airDrag * dt);
+      if (speed > airMax) {
+        const slowed = Math.max(airMax, speed - (speed - airMax) * PHYS.airDrag * dt);
         this.vel.x *= slowed / speed;
         this.vel.z *= slowed / speed;
       }
@@ -363,6 +376,8 @@ export class PlayerSim {
     this.ropeLength = Math.max(PHYS.ropeMin, dist);
     this.ropeGoal = Math.max(PHYS.ropeMin, dist * PHYS.reelFraction);
     this.canDoubleJump = true;
+    this.swungSinceGround = true;
+    this.thrown = false;
     // The press (if any) was spent on the grab, and coyote time ends: no buffered jump on a landing
     // while still attached, and no ground jump right after letting go.
     this.jumpBuffer = 0;
@@ -427,9 +442,11 @@ export class PlayerSim {
   }
 
   private applyRelease(stats: PlayerStats): void {
+    // The forward kick is the same at every Swing Power (more would fly past the next island); Power gives
+    // a stronger pump on the rope and a higher release instead.
     const boost = 1 + 0.1 * stats.power;
-    this.vel.x *= boost;
-    this.vel.z *= boost;
+    this.vel.x *= PHYS.releaseBoost;
+    this.vel.z *= PHYS.releaseBoost;
     this.vel.y = this.vel.y * boost + PHYS.releaseLift;
     this.lastAnchorId = this.anchor ? this.anchor.id : -1;
     this.sinceRelease = 0;
@@ -475,7 +492,7 @@ export class PlayerSim {
         }
       }
 
-      moveAndCollide(this.pos, dx, dy, dz, world.solids, this.sweep);
+      moveAndCollide(this.pos, dx, dy, dz, world.solids, this.sweep, this.swungSinceGround && this.mode !== 'launch' ? PHYS.ledgeStep : 0);
       if (this.sweep.hitX) this.vel.x = 0;
       if (this.sweep.hitZ) this.vel.z = 0;
       if (this.sweep.hitY === 'floor') {
@@ -494,11 +511,21 @@ export class PlayerSim {
         this.anchor = null;
         this.landedAttached = true;
       }
-      if (this.mode !== 'ground') this.events.push('land');
+      if (this.mode !== 'ground') {
+        this.events.push('land');
+        // A fast landing keeps only PHYS.landMaxSpeed, so it does not skid off the far side of a short island.
+        const hs = Math.hypot(this.vel.x, this.vel.z);
+        if (hs > PHYS.landMaxSpeed) {
+          this.vel.x *= PHYS.landMaxSpeed / hs;
+          this.vel.z *= PHYS.landMaxSpeed / hs;
+        }
+      }
       this.mode = 'ground';
       this.groundSolid = floor;
       this.airTime = 0;
       this.canDoubleJump = true;
+      this.swungSinceGround = false;
+      this.thrown = false;
     } else if (this.mode === 'ground') {
       this.mode = 'air';
     } else if (this.mode === 'launch' && this.launchTime <= 0) {
@@ -558,16 +585,26 @@ export class PlayerSim {
       if (dx * dx + dz * dz > sp.radius * sp.radius) continue;
       this.pos.y = sp.pos.y + 0.05;
       this.vel.y = SPRING.launchVel;
-      const hs = Math.hypot(this.vel.x, this.vel.z);
-      if (hs > SPRING.maxHorizontal) {
-        this.vel.x *= SPRING.maxHorizontal / hs;
-        this.vel.z *= SPRING.maxHorizontal / hs;
+      const cx = sp.center ? sp.center.x - this.pos.x : 0;
+      const cz = sp.center ? sp.center.z - this.pos.z : 0;
+      const cl = Math.hypot(cx, cz);
+      if (cl > 1e-3) {
+        // The run does not carry over: the bounce leans gently toward the middle of the island.
+        this.vel.x = (cx / cl) * SPRING.maxHorizontal;
+        this.vel.z = (cz / cl) * SPRING.maxHorizontal;
+      } else {
+        const hs = Math.hypot(this.vel.x, this.vel.z);
+        if (hs > SPRING.maxHorizontal) {
+          this.vel.x *= SPRING.maxHorizontal / hs;
+          this.vel.z *= SPRING.maxHorizontal / hs;
+        }
       }
       this.mode = 'air';
       this.airTime = 0;
       this.coyote = 0;
       this.canDoubleJump = true;
       this.sprungOn = sp.id;
+      this.thrown = true;
       return;
     }
   }
@@ -581,10 +618,14 @@ export class PlayerSim {
       if (dx * dx + dz * dz > g.radius * g.radius) continue;
       if (geyserStateAt(g, this.time) !== 'erupting') continue;
       this.vel.y = GEYSER_LAUNCH.vel;
+      // Straight up: a runner caught by the eruption comes down on the same island, not in the gap.
+      this.vel.x *= GEYSER_LAUNCH.keepHorizontal;
+      this.vel.z *= GEYSER_LAUNCH.keepHorizontal;
       this.mode = 'launch';
       this.launchTime = GEYSER_LAUNCH.time;
       this.coyote = 0;
       this.geyserLaunched = g.id;
+      this.thrown = true;
       return;
     }
   }

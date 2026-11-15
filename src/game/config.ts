@@ -15,6 +15,8 @@ export const PHYS = {
   groundAccel: 85,
   groundFriction: 60,
   airAccel: 22,
+  /** Air control is this many times stronger while the stick points against the horizontal flight (air brake). */
+  airBrake: 2.5,
   airDrag: 0.35,
   maxFallSpeed: 55,
   maxSpeed: 60,
@@ -34,8 +36,23 @@ export const PHYS = {
   reelSpeed: 6,
   reelFraction: 0.8,
   pumpAccel: 16,
+  /**
+   * Air control only pushes you up to this horizontal speed (a swing can still carry you faster). It is fixed,
+   * not the Run Speed upgrade, so buying Speed never makes swings overshoot the next island.
+   */
+  airMaxSpeed: 11,
+  /** Air control limit while thrown up by a spring coral or a geyser: you come down near where you went up. */
+  bounceAirMax: 5,
+  /** Air control strength (× airAccel) while thrown up by a spring coral or a geyser. */
+  thrownAccel: 0.3,
+  /** Horizontal speed left after landing on a solid top, so a fast landing does not skid off a short island. */
+  landMaxSpeed: 12,
+  /** Ledge grab: a player hitting an island's side with the feet this far (or less) below its top steps up onto it. */
+  ledgeStep: 0.8,
   swingDamping: 0.04,
   releaseLift: 4.5,
+  /** Horizontal speed multiplier when letting go (the vertical one grows with Swing Power). */
+  releaseBoost: 1.1,
 
   /** Lighthouse launch pad flight time. */
   padFlightTime: 1.1,
