@@ -1229,8 +1229,10 @@ export class Game {
       case 'seaEvent': {
         const def = SEA_EVENTS[e.id];
         const title = def.name.toUpperCase();
-        if (e.phase === 'headsUp') hud.banner({ title: `${title} IN 15 S`, sub: def.sub, hue: def.hue, priority: 'info', ms: 2600 });
-        else if (e.phase === 'start') {
+        // A heads-up already over (forced straight to the start) gets no banner.
+        if (e.phase === 'headsUp') {
+          if (this.sim.sea.phase === 'headsUp') hud.banner({ title: `${title} IN 15 S`, sub: def.sub, hue: def.hue, priority: 'info', ms: 2600 });
+        } else if (e.phase === 'start') {
           hud.banner({ title: `${title}!`, sub: def.sub, hue: def.hue, priority: 'info', ms: 2400 });
           if (e.id === 'treasureFleet') hud.toast({ text: '3 treasure bottles washed up!', kind: 'good', icon: 'gift' });
         } else hud.toast({ text: `${def.name} is over`, kind: 'info', icon: 'wave' });
