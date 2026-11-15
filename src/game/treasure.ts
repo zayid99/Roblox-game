@@ -24,7 +24,7 @@ import { ZONES } from './zones';
 
 export const TREASURE = {
   /** Chance that a normal wave leaves a bottle. Golden and Big Waves always do (a Big Wave's is Legendary). */
-  normalWaveChance: 0.3,
+  normalWaveChance: 0.15, // halved from the design's 0.3: bottles were pulling the long-term zone gates 13-20% earlier
   /** Bottles a Treasure Fleet sea event washes up. */
   fleetCount: 3,
   /** Most bottles lying in the world at once. */
