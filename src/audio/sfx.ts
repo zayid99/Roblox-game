@@ -9,13 +9,16 @@ export type SfxId =
   | 'ui.click' | 'ui.hover' | 'ui.open' | 'ui.close' | 'ui.tab' | 'ui.denied' | 'toast' | 'jump' | 'doubleJump' | 'grab' | 'release'
   | 'perfect' | 'perfectWindow' | 'land' | 'pad' | 'bounce' | 'geyser' | 'collect' | 'coinTick' | 'deliver' | 'buy' | 'maxed' | 'claim' | 'splash' | 'sea'
   | 'horn' | 'tick' | 'zone' | 'chainStep' | 'chainEnd' | 'chainLost' | 'closeCall' | 'giftReady' | 'reveal' | 'rebirth'
-  | 'tutorialStep' | 'tutorialDone' | 'slowIn' | 'slowOut' | 'eggWobble' | 'eggCrack' | 'spring' | 'crumble' | 'stoneSink';
+  | 'tutorialStep' | 'tutorialDone' | 'slowIn' | 'slowOut' | 'eggWobble' | 'eggCrack' | 'spring' | 'crumble' | 'stoneSink'
+  // Treasure Bottles and Sea Events
+  | 'bottleSpawn' | 'bottlePickup' | 'bottleOpen' | 'seaBell' | 'seaStart' | 'seaEnd';
 
 export const SFX_IDS: readonly SfxId[] = [
   'ui.click', 'ui.hover', 'ui.open', 'ui.close', 'ui.tab', 'ui.denied', 'toast', 'jump', 'doubleJump', 'grab', 'release',
   'perfect', 'perfectWindow', 'land', 'pad', 'bounce', 'geyser', 'collect', 'coinTick', 'deliver', 'buy', 'maxed', 'claim', 'splash', 'sea',
   'horn', 'tick', 'zone', 'chainStep', 'chainEnd', 'chainLost', 'closeCall', 'giftReady', 'reveal', 'rebirth',
   'tutorialStep', 'tutorialDone', 'slowIn', 'slowOut', 'eggWobble', 'eggCrack', 'spring', 'crumble', 'stoneSink',
+  'bottleSpawn', 'bottlePickup', 'bottleOpen', 'seaBell', 'seaStart', 'seaEnd',
 ];
 
 export interface PlayOpts {
@@ -372,6 +375,44 @@ export class SfxBank {
         this.noise(t + 0.02, { type: 'bandpass', f0: 1400, f1: 500, glide: 0.1, q: 2, dur: 0.12, peak: 0.12, attack: 0.002 });
         this.tone(t, { type: 'sine', f0: 500, f1: 1200, glide: 0.08, dur: 0.12, peak: 0.12 });
         [89, 93, 96].forEach((m, k) => this.glock(t + 0.06 + k * 0.05, m, 0.05));
+        break;
+      // ---- Treasure Bottles and Sea Events ----
+      case 'bottleSpawn':
+        // A far-off shimmer: a rising glass arpeggio over a soft swell (golden = Legendary bottle).
+        this.swell(t, 'white', 'bandpass', 3000, 7000, 3, 0.8, 0.05);
+        (o.golden ? [84, 88, 91, 96, 100] : [84, 88, 91, 96]).forEach((m, k) => this.glock(t + 0.05 + k * 0.08, m, 0.05));
+        break;
+      case 'bottlePickup':
+        // Glass clink and a bright glint.
+        this.tone(t, { type: 'sine', f0: 2200, f1: 2600, glide: 0.04, dur: 0.18, peak: 0.08, attack: 0.002, tau: 0.05 });
+        this.tone(t + 0.03, { type: 'triangle', f0: 3300, dur: 0.12, peak: 0.04, attack: 0.002, tau: 0.03 });
+        [89, 96].forEach((m, k) => this.glock(t + 0.06 + k * 0.07, m, 0.06));
+        break;
+      case 'bottleOpen':
+        // Cork pop, then the reveal fanfare (bigger for a Legendary bottle or a creature).
+        e.duckMusic(DUCK8, t);
+        this.noise(t, { type: 'highpass', f0: 1800, dur: 0.05, peak: 0.25, attack: 0.001, tau: 0.01 });
+        this.tone(t, { type: 'sine', f0: 320, f1: 1100, glide: 0.06, dur: 0.1, peak: 0.18, attack: 0.001 });
+        this.reveal(t + 0.12, o.rarity ?? 2);
+        break;
+      case 'seaBell':
+        // Ship's bell, twice: the sea-event heads-up (distinct from the wave's conch horn).
+        e.duckMusic(DUCK5, t);
+        for (const off of [0, 0.55]) {
+          this.tone(t + off, { type: 'sine', f0: mtof(81), dur: 1.4, peak: 0.12, attack: 0.002, tau: 0.45 });
+          this.tone(t + off, { type: 'sine', f0: mtof(81) * 2.76, dur: 0.7, peak: 0.05, attack: 0.002, tau: 0.18 });
+          this.tone(t + off, { type: 'triangle', f0: mtof(69), dur: 1.0, peak: 0.05, attack: 0.002, tau: 0.35 });
+        }
+        break;
+      case 'seaStart':
+        // Fanfare: steel-pan chord, a glockenspiel run and a light crash.
+        e.duckMusic(DUCK5, t);
+        [65, 69, 72, 77].forEach((m, k) => this.pan(t + k * 0.06, m, 0.13, k === 3 ? 0 : 0.25));
+        [84, 89, 93, 96, 101].forEach((m, k) => this.glock(t + 0.25 + k * 0.05, m, 0.05));
+        I.crash(e, this.out, t + 0.25, 0.35);
+        break;
+      case 'seaEnd':
+        [89, 84, 81, 77].forEach((m, k) => this.glock(t + k * 0.09, m, 0.04));
         break;
     }
   }

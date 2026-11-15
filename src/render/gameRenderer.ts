@@ -14,7 +14,7 @@ import {
   type Object3D,
   type Texture,
 } from 'three';
-import type { GuideSpec, LayoutMode, QualitySetting, QualityTier, RequestTimeScale, ScreenPt, SimEvent } from '../contracts';
+import type { GuideSpec, LayoutMode, QualitySetting, QualityTier, RequestTimeScale, ScreenPt, SeaEventId, SimEvent } from '../contracts';
 import { NO_GUIDES } from '../contracts';
 import { PHYS, WAVE } from '../game/config';
 import { groundHeightAt, type Course } from '../game/course';
@@ -49,6 +49,8 @@ import { SpeedLines } from './speedLines';
 import { WaveVisual } from './waveVisual';
 import { Water, waveHeight } from './water';
 import { World } from './world';
+import { SeaEventVisuals } from './seaEvents';
+import { TreasureVisuals } from './treasure';
 
 export { waveHeight } from './water';
 export { PortraitFactory } from './portraits';
@@ -113,6 +115,10 @@ export class GameRenderer {
   private coldOpen!: ColdOpen;
   private props: Props | null = null;
   private buddy!: Buddy;
+  // Treasure Bottles and Sea Events (render/treasure.ts, render/seaEvents.ts).
+  private treasure!: TreasureVisuals;
+  private seaFx!: SeaEventVisuals;
+  private seaStrength = 0;
 
   private reduceMotion = false;
   private mood = 0;
@@ -233,6 +239,9 @@ export class GameRenderer {
     this.props = q.props ? new Props(course, q.edgeLines) : null;
     this.buddy = new Buddy(this.particles);
     this.root.add(this.buddy.root);
+    this.treasure = new TreasureVisuals(this.particles);
+    this.seaFx = new SeaEventVisuals(this.particles);
+    this.root.add(this.treasure.group);
     if (this.props) this.root.add(this.props.group);
     this.root.add(this.sky.mesh, this.clouds.mesh, this.water.mesh, this.shore, this.world.group, this.blobs.mesh, this.character.root, this.creatures.group, this.objects.group);
     this.lastReachLevel = -1;
@@ -403,6 +412,23 @@ export class GameRenderer {
     return this.frameCap.ready(nowMs, this.params.frameCapMs);
   }
 
+  /** Treasure Bottles and the running Sea Event's particles (fading in and out over about a second). */
+  private updateSea(t: number, dt: number, sim: Readonly<GameSim>, reduce: boolean): void {
+    const player = sim.player;
+    this.treasure.update({
+      time: t, simTime: sim.time, dt, world: sim.treasure.world, carried: sim.treasure.carried, player: player.pos,
+      hidePlayer: sim.splashTime > 0, outlines: this.params.creatureOutlines, reduceMotion: reduce,
+    });
+    const ev = sim.sea.active;
+    this.seaStrength = Math.max(0, Math.min(1, this.seaStrength + (ev ? dt : -dt)));
+    if (ev) this.seaEvent = ev;
+    this.seaFx.update({
+      dt, time: t, event: this.seaStrength > 0 ? this.seaEvent : null, strength: this.seaStrength, player: player.pos,
+      reduceMotion: reduce, lowTier: this.params.tier === 'low',
+    });
+  }
+  private seaEvent: SeaEventId | null = null;
+
   // ---------- Events (§5.3 graphics column) ----------
 
   onSimEvent(e: SimEvent): void {
@@ -413,6 +439,12 @@ export class GameRenderer {
     const ts = this.deps.requestTimeScale;
     const parts = this.particles;
     switch (e.type) {
+      case 'bottlePickup':
+        this.treasure.burst(tmpV.copy(p).setY(p.y + 1.5), e.kind);
+        break;
+      case 'bottleOpen':
+        this.treasure.burst(tmpV.copy(p).setY(p.y + 3), e.kind);
+        break;
       case 'player':
         switch (e.event) {
           case 'jump':
@@ -706,6 +738,7 @@ export class GameRenderer {
     this.world.update(wf);
     this.objects.update(t, dt, sim, sim.time, this.particles, player.pos);
     this.props?.update(dt, player.pos, this.particles);
+    this.updateSea(t, dt, sim, reduce);
     // Golden/Big look from the sim every frame (two uniforms), so a rebuild mid-warning keeps it.
     if (wave.phase !== 'calm') this.wave.setVariant(wave.golden, wave.big);
     this.wave.update(dt, wave, player.pos.x, this.camera.quaternion, this.particles, WAVE.warning);
