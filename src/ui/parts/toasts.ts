@@ -34,6 +34,16 @@ export class ToastsPart {
     this.el = el('div', 'toasts');
   }
 
+  /** A toast on screen takes a click (a tap target or an action button): desktop frees the cursor for it. */
+  get tappable(): boolean {
+    return this.live.some((l) => !!(l.spec.onTap || l.spec.action));
+  }
+
+  /** Any toast on screen or waiting. */
+  get busy(): boolean {
+    return this.live.length > 0 || this.queue.length > 0;
+  }
+
   setSurge(on: boolean): void {
     if (this.surge && !on) {
       // Warnings held back by the surge are stale once it is over (the wave may have taken what they talk about).
