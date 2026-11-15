@@ -10,18 +10,18 @@ import { TimeScale } from './core/timeScale';
 import { buildAudioFrame, buildHudView, buildRenderFrame, lastReticle } from './core/views';
 import { weekKey } from './game/clock';
 import { HOME_FRONT_Z, HOME_TOP, WAVE } from './game/config';
-import { creatureIncome, getSpecies, RARITIES, SPECIES, type CreatureRef } from './game/creatures';
-import { formatCash, formatIncome, type UpgradeKey } from './game/economy';
+import { getSpecies, RARITIES, SPECIES, type CreatureRef } from './game/creatures';
+import { formatCash, type UpgradeKey } from './game/economy';
 import { featuredSpeciesFor } from './game/featured';
 import type { PlayerInput } from './game/player';
 import { Progression, type ProgressEvent } from './game/progression';
-import { VOYAGE, VOYAGE_LENGTH } from './game/quests';
+import { questLine, questLineTitle } from './game/quests';
 import { applyReward } from './game/rewards';
 import { buildShopView } from './game/shopView';
 import { activeBuddy, buildHatcheryView, buddyBonus, hatchEgg, inHatcheryZone, setBuddy } from './game/hatchery';
 import { Rng } from './game/rng';
 import { GameSim } from './game/sim';
-import { GameState } from './game/state';
+import { GameState, deliveryMessage } from './game/state';
 import { Input } from './input/input';
 import { Platform } from './platform/crazygames';
 import { GameRenderer } from './render/gameRenderer';
@@ -465,7 +465,11 @@ export class Game {
     return {
       shop: () => buildShopView(this.state),
       index: () => this.progression.index(),
-      free: () => this.progression.free(),
+      // economy: the boost ad button needs the SDK (like Welcome ×2).
+      free: () => {
+        const v = this.progression.free();
+        return { ...v, boost: { ...v.boost, canAd: v.boost.canAd && this.platform.hasSdk } };
+      },
       locker: () => this.progression.locker(),
       settings: () => ({ ...this.state.settings, platformMuted: this.platform.platformMuted, autoTier: this.gfx.tier }),
       welcome: () => {
@@ -515,6 +519,29 @@ export class Game {
         if (this.progression.claimGift(i)) this.audio.play('claim');
         else this.audio.play('ui.denied');
         this.save();
+      },
+      // ---- economy: Daily Missions and the 2× Cash Boost ad ----
+      claimMission: (i) => {
+        if (this.progression.claimMission(i)) this.audio.play('claim');
+        else this.audio.play('ui.denied');
+        this.save();
+      },
+      rerollMission: (i) => {
+        if (this.progression.rerollMission(i)) this.audio.play('ui.open');
+        else this.audio.play('ui.denied');
+        this.save();
+      },
+      watchBoostAd: () => {
+        if (!this.platform.hasSdk || !this.progression.canAdBoost()) {
+          this.audio.play('ui.denied');
+          return;
+        }
+        this.runAd('rewarded', (ok) => {
+          if (!ok || this.progression.addAdBoost() <= 0) return;
+          this.audio.play('claim');
+          this.hud.toast({ text: '2× Cash Boost: +5 min', kind: 'good', icon: 'boost' });
+          this.save();
+        });
       },
       useLuckyTide: () => {
         if (this.progression.useLuckyTide(this.sim)) {
@@ -835,7 +862,8 @@ export class Game {
 
     // 5. Progression (every frame, also while paused) and hints.
     const active = !document.hidden && now - this.input.lastInputAt < 120_000;
-    this.progression.update(realDt, { active, sim, ftueDone: state.ftue.done });
+    // economy: `playing` (active and not paused) runs the 2× Cash Boost timer.
+    this.progression.update(realDt, { active, playing: active && !this.paused, sim, ftueDone: state.ftue.done });
     for (const e of this.progression.events) this.onProgressEvent(e);
     const toastBusy = !!this.uiRoot.querySelector('.toasts .toast');
     const hintPrompt = this.hints.update(realDt, sim, state, {
@@ -1078,13 +1106,14 @@ export class Game {
         }
         const buddy = activeBuddy(state);
         if (buddy && e.bonusCash > 0) hud.float(this.playerScreen(2.6), `BUDDY +${Math.round(buddyBonus(buddy) * 100)}%`, 'bonus', 'buddy');
-        if (placed.length) {
-          // Net change: base creatures pushed off by better ones (and sold) no longer earn.
-          const pushedOff = e.result.sold.reduce((s, x) => s + (x.displaced ? creatureIncome(x.creature) : 0), 0);
-          const gain = (placed.reduce((s, c) => s + creatureIncome(c), 0) - pushedOff) * state.multiplier * state.streakBonus;
-          if (gain > 0) hud.toast({ text: `+${formatIncome(gain)} added`, kind: 'good', icon: 'pedestal' });
+        // economy: one toast per delivery, the income gained first ("+$2.1/s (replaced Toastopus)"), sales as small print.
+        const msg = deliveryMessage(e.result, state.multiplier * state.streakBonus);
+        if (msg) hud.toast({ text: msg.text, kind: msg.good ? 'good' : 'info', icon: msg.good ? 'pedestal' : 'cash' });
+        // The first time a catch is sold because the base is full: point at Base Pedestals (once).
+        if (msg && msg.soldExtra > 0 && !tutorialOn && !this.progression.hintSeen('baseFullPedestals')) {
+          this.progression.markHintSeen('baseFullPedestals');
+          hud.toast({ text: 'Base full: buy pedestals', kind: 'warn', icon: 'pedestal', onTap: () => this.openPanel('shop', 'upgrades') });
         }
-        for (const s of e.result.sold) hud.toast({ text: `Base full: sold ${getSpecies(s.creature.speciesId).name} for ${formatCash(s.cash)}`, kind: 'info', icon: 'cash' });
         this.save();
         break;
       }
@@ -1193,17 +1222,31 @@ export class Game {
       case 'questDone': {
         // The tracker is shown after the FTUE only. Build the row from the quest that was completed
         // (not the tracker's last view), so quests completed back to back each get their own row.
-        const q = VOYAGE[e.index - 1];
+        const list = questLine(e.line ?? 'first');
+        const q = list[e.index - 1];
         if (q && this.state.ftue.done) {
           this.doneQueue.push({
-            title: 'FIRST VOYAGE',
-            count: `${q.n}/${VOYAGE_LENGTH}`,
+            title: questLineTitle(e.line ?? 'first'),
+            count: `${q.n}/${list.length}`,
             rows: [{ icon: q.icon, text: q.text, progress: 1, reward: e.reward, done: true }],
           });
         }
         this.audio.play('claim');
         break;
       }
+      // ---- economy: Deep Voyage, Daily Missions, 2× Cash Boost ----
+      case 'deepDone':
+        this.platform.happytime();
+        hud.banner({ title: 'DEEP VOYAGE COMPLETE', sub: 'Daily Missions keep coming', hue: 'gold', priority: 'info' });
+        break;
+      case 'missionDone':
+        this.audio.play('giftReady');
+        hud.toast({ text: `Mission done: ${e.text}`, kind: 'good', icon: 'check', onTap: () => this.openPanel('free', 'missions') });
+        break;
+      case 'boostEnd':
+        hud.toast({ text: '2× Cash Boost ended', kind: 'info', icon: 'boost', onTap: () => this.openPanel('free', 'gifts') });
+        break;
+
       case 'voyageDone':
         this.platform.happytime();
         hud.banner({ title: 'VOYAGE COMPLETE', sub: 'The Locker is open', hue: 'gold', priority: 'info' });

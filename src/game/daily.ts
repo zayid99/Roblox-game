@@ -6,7 +6,8 @@ import type { DailySave } from './state';
 export const DAILY_REWARDS: readonly RewardSpec[] = [
   { min: 3, pearls: 10 },
   { luckyTide: 1 },
-  { min: 5, pearls: 20 },
+  // Day 3: the 2× Cash Boost replaces "5 min" (§9.2 note; it runs while playing, so it is worth more to a player who stays).
+  { boostMin: 10, pearls: 20 },
   { min: 10 },
   { mystery: true },
   { min: 15, pearls: 30 },

@@ -3,7 +3,7 @@
 // base with the delivery rules (state.grantCreature). Buddy: one base creature follows the player and
 // adds a small bonus to delivery cash.
 import { MUTATIONS, RARITIES, SPECIES, creatureIncome, getSpecies, hasSpecies, pickSpecies, type CreatureRef } from './creatures';
-import { UPGRADES, rebirthMultiplier, round2, shopRound, type UpgradeLevels } from './economy';
+import { BOOST, UPGRADES, rebirthMultiplier, round2, shopRound, type UpgradeLevels } from './economy';
 import { DISCOVERY_PEARLS } from './rewards';
 import type { Rng } from './rng';
 import type { DeliveryResult, GameState } from './state';
@@ -153,6 +153,7 @@ export function hatchEgg(state: GameState, zone: number, rng: Rng, featured: str
   const ref = rollEgg(zone, rng, featured);
   const g = state.grantCreature(ref);
   state.counters.eggsHatched++;
+  state.counters.bestEggZone = Math.max(state.counters.bestEggZone, zone + 1);
   // A species found first in an egg pays the first-discovery Pearls, like a wild catch (§9.7).
   const pearls = g.isNewSpecies ? DISCOVERY_PEARLS : 0;
   state.pearls += pearls;
@@ -177,10 +178,14 @@ export function activeBuddy(state: Pick<GameState, 'buddy' | 'base'>): CreatureR
   return state.base.some((c) => c && same(c, b)) ? b : null;
 }
 
-/** Multiplier on delivery cash (1 without a Buddy). */
-export function deliveryMult(state: Pick<GameState, 'buddy' | 'base'>): number {
+/**
+ * Multiplier on delivery cash: the Buddy bonus (1 without one), × 2 while a Cash Boost runs (when the state has
+ * tokens; the sim's delivery cash goes through here, so the boost needs no change in sim.ts).
+ */
+export function deliveryMult(state: Pick<GameState, 'buddy' | 'base'> & { tokens?: { boost2xSec: number } }): number {
   const b = activeBuddy(state);
-  return b ? 1 + buddyBonus(b) : 1;
+  const boost = state.tokens && state.tokens.boost2xSec > 0 ? BOOST.factor : 1;
+  return (b ? 1 + buddyBonus(b) : 1) * boost;
 }
 
 /** Equips a base creature as the Buddy (null unequips). Returns false if it isn't on the base. */

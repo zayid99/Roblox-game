@@ -43,6 +43,7 @@ export function trackSimEvent(state: GameState, e: SimEvent, today: string): str
     case 'surgeEnd':
       state.flags[FLAG_FIRST_SURGE_END] = true;
       if (e.survived) c.wavesSurvived++;
+      if (e.survived && e.big) c.bigWavesSurvived++;
       break;
     case 'padLaunch':
       c.padLaunches++;

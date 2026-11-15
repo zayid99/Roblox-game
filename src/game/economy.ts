@@ -31,8 +31,10 @@ export function reachGateLevel(zone: number): number {
 
 /*
  * Prices follow the zone ladder of one continuous sitting (see tests/pacing.test.ts): Rope Reach pairs are the zone
- * gates (Coral Reef $40 is bought in the tutorial; Lagoon $20K, Stormy Seas $300K, Kraken Deep $1.6M, Volcano Bay
- * $6M, Secret Reef $40M). Carry Slots and Base Pedestals are priced by what one more creature earns in the zone where
+ * gates (Coral Reef $40 is bought in the tutorial; Lagoon $8K, Stormy Seas $500K, Kraken Deep $2.4M, Volcano Bay
+ * $9M, Secret Reef $52M). Lagoon is pacing proposal F1 (docs/research/r2-pacing.md: Lagoon at ~4-6 min); the later gates
+ * are higher than F1's because the Deep Voyage, Daily Missions and the 2× Cash Boost add income F1 did not have.
+ * Base Pedestals level 3 is $4K so the base keeps growing in the first minutes (r1 F8). Carry Slots and Base Pedestals are priced by what one more creature earns in the zone where
  * they are bought, so every level pays for itself within about 15 minutes of play. Run Speed and Swing Power are cheap "feel" levels
  * spread across the whole climb (each costs about 1-2 minutes of the income a player has when it comes up).
  */
@@ -55,7 +57,7 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     desc: 'Grab hooks from farther away',
     // Capped at the last zone's gate: more reach would unlock nothing.
     maxLevel: reachGateLevel(ZONES.length - 1),
-    costs: [40, 150, 20_000, 90_000, 210_000, 500_000, 1_100_000, 2_000_000, 4_000_000, 12_000_000, 28_000_000],
+    costs: [40, 150, 8_000, 110_000, 430_000, 800_000, 1_600_000, 3_000_000, 6_000_000, 16_000_000, 36_000_000],
     value: reachAt,
     format: (v) => `${v.toFixed(1)} m`,
   },
@@ -86,11 +88,18 @@ export const UPGRADES: Record<UpgradeKey, UpgradeDef> = {
     iconId: 'pedestal',
     desc: 'Room for more creatures at home',
     maxLevel: 8,
-    costs: [100, 1_000, 25_000, 120_000, 300_000, 800_000, 1_500_000, 2_000_000],
+    costs: [100, 1_000, 4_000, 120_000, 300_000, 800_000, 1_500_000, 2_000_000],
     value: (l) => 4 + 2 * l,
     format: (v) => `${v}`,
   },
 };
+
+/**
+ * 2× Cash Boost (DESIGN_V2 C4, docs/research/r4-retention.md #4): doubles pedestal income and delivery cash while
+ * `tokens.boost2xSec` > 0. It counts down only while the player is playing (not paused, hidden or offline), so stored
+ * minutes are a reason to keep playing. A rewarded ad adds `adSec`, up to `capSec` stored.
+ */
+export const BOOST = { factor: 2, adSec: 300, capSec: 1800 };
 
 export const UPGRADE_ORDER: readonly UpgradeKey[] = ['speed', 'reach', 'power', 'carry', 'slots'];
 

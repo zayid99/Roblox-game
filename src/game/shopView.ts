@@ -1,4 +1,5 @@
 import { REBIRTH, UPGRADES, UPGRADE_ORDER, baseSlots, emptyLevels, rebirthMultiplier } from './economy';
+import { VOYAGE_LENGTH } from './quests';
 import type { GameState } from './state';
 import type { RebirthView, ShopRow, ShopView } from '../contracts';
 
@@ -53,6 +54,6 @@ export function buildShopView(state: GameState): ShopView {
     income: state.incomePerSec(),
     rows: UPGRADE_ORDER.map((k) => buildShopRow(state, k)),
     rebirth: buildRebirthView(state),
-    lockerUnlocked: state.voyage.step >= 12,
+    lockerUnlocked: state.voyage.step >= VOYAGE_LENGTH,
   };
 }

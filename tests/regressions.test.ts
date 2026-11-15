@@ -118,7 +118,7 @@ describe('save loading', () => {
     s.gifts.pending.push(12); // even if one slips in later
     const { p } = progression(s);
     expect(() => p.welcome()).not.toThrow();
-    expect(p.claimPendingGifts()).toEqual({ pearls: 10 });
+    expect(p.claimPendingGifts()).toEqual({ cash: 50 }); // gift 2: 2 min of income, $50 floor
   });
 
   it('a malformed lastClaimDay does not lock the Daily calendar', () => {
@@ -205,7 +205,7 @@ describe('gifts and the FTUE', () => {
   it('no "Free gift ready" or gift claims while the FTUE runs; no burst when it ends', () => {
     const s = new GameState();
     const { p, events, tick } = progression(s);
-    tick(4 * 60, false);
+    tick(3 * 60, false);
     expect(readyGifts(s.gifts)).toEqual([0, 1]);
     expect(events.filter((e) => e.type === 'giftReady')).toEqual([]);
     expect(p.claimGift('all')).toBeNull();
@@ -213,7 +213,7 @@ describe('gifts and the FTUE', () => {
     tick(1, true);
     expect(events.some((e) => e.type === 'unlock' && e.what === 'free')).toBe(true);
     expect(events.filter((e) => e.type === 'giftReady')).toEqual([]);
-    tick(60, true); // gift 3 at minute 5 toasts as usual
+    tick(60, true); // gift 3 at minute 4 toasts as usual
     expect(events.filter((e) => e.type === 'giftReady')).toEqual([{ type: 'giftReady', index: 2 }]);
     expect(p.claimGift('all')).not.toBeNull();
   });

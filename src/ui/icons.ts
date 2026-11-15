@@ -105,7 +105,23 @@ function bill(t: string, medallion: boolean): Part {
   };
 }
 
+/** A sun burst: n rays between radius r1 (valleys) and r2 (tips). */
+function burst(cx: number, cy: number, r1: number, r2: number, n: number): string {
+  let d = '';
+  for (let i = 0; i < n * 2; i++) {
+    const r = i % 2 ? r1 : r2;
+    const a = (i * Math.PI) / n - Math.PI / 2;
+    d += `${i ? 'L' : 'M'}${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)}`;
+  }
+  return `${d}Z`;
+}
+
 const DEFS: Record<IconId, IconDef> = {
+  // 2× Cash Boost (economy): a sun burst with "2×" (drawn; no painted version yet).
+  boost: {
+    parts: [{ d: burst(24, 24, 16.5, 22, 12), fill: '#FFC92E', shade: '#E07800', hl: [16, 13, 5, 2.6, -35] }],
+    top: `<text x="24" y="31" text-anchor="middle" font-family="'Lilita One', system-ui, sans-serif" font-size="19" fill="#fff" stroke="${INK}" stroke-width="3.2" paint-order="stroke" stroke-linejoin="round">2×</text>`,
+  },
   cash: {
     parts: [bill('translate(25 34) rotate(-3)', false), bill('translate(24 27.5) rotate(-13)', false), bill('translate(23.5 20) rotate(-7)', true)],
   },
