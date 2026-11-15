@@ -17,6 +17,8 @@ import { eggCost, eggUnlocked } from '../src/game/hatchery';
 import { VOYAGE } from '../src/game/quests';
 import { applyReward, minutes, resolveReward } from '../src/game/rewards';
 import { Rng } from '../src/game/rng';
+import { SEA, SEA_EVENT_IDS } from '../src/game/seaEvents';
+import { openBottle, rollWaveBottle, TREASURE } from '../src/game/treasure';
 import { GameState } from '../src/game/state';
 import { ZONES } from '../src/game/zones';
 import { STEPS } from '../src/tutorial/steps';
@@ -51,6 +53,11 @@ export interface PacingOptions {
   goldenShare?: number;
   /** Trip time multiplier: about 1.5 for a casual player (slower, more sea falls), 0.75 for a skilled one. */
   tripTimeMult?: number;
+  /**
+   * Treasure Bottles (src/game/treasure.ts): share of the bottles washed up during a trip that the player brings
+   * home (at most one per trip, plus Treasure Fleet bottles). 0 (default) = the game without bottles.
+   */
+  treasureShare?: number;
 }
 
 export interface Purchase {
@@ -119,6 +126,8 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   /** Income-seconds per play second: daily sessions also bring the Welcome Back. */
   const k = daily ? (sessionSec + ECONOMY.offlineRate * ECONOMY.offlineCapSeconds) / sessionSec : 1;
   const rng = new Rng(seed * 7919 + 13);
+  /** Treasure rolls have their own stream, so a run with bottles keeps the same creatures and gifts. */
+  const trng = new Rng(seed * 104729 + 7);
   const s = new GameState();
   const res: PacingResult = {
     gate: ZONES.map((_, i) => (i === 0 ? 0 : NaN)),
@@ -335,7 +344,20 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
       for (let i = 0; i < spots; i++) if (rng.next() < ECONOMY.spawnChance) batch.push({ c: rollCreature(ZONES[zz].rarity, golden, rng), zone: zz });
     }
     batch.sort((a, b) => creatureIncome(b.c) - creatureIncome(a.c));
-    const take = batch.slice(0, carryCapacity(s.levels));
+    // Treasure Bottles: waves ending during the trip may leave one (the real roll); a Treasure Fleet adds a few.
+    const bottles: ('normal' | 'legendary')[] = [];
+    const tShare = opts.treasureShare ?? 0;
+    if (tShare > 0) {
+      const w0 = Math.max(0, Math.floor((play - sessionStart - WAVE.firstInterval) / WAVE.interval) + 1);
+      const w1 = Math.max(0, Math.floor((play + tripPlaySec(z) - sessionStart - WAVE.firstInterval) / WAVE.interval) + 1);
+      for (let count = w0; count < w1 && !bottles.length; count++) {
+        const kind = rollWaveBottle(count % WAVE.goldenEvery === WAVE.goldenEvery - 1, (count + 1) % WAVE.bigEvery === 0, trng);
+        if (kind && trng.next() < tShare) bottles.push(kind);
+      }
+      const fleetOdds = tripPlaySec(z) / (((SEA.gapMin + SEA.gapMax) / 2) * SEA_EVENT_IDS.length);
+      if (trng.next() < fleetOdds) for (let i = 0; i < TREASURE.fleetCount; i++) if (trng.next() < tShare) bottles.push('normal');
+    }
+    const take = batch.slice(0, Math.max(0, carryCapacity(s.levels) - bottles.length));
     for (const { c } of take) {
       s.pickUp(c);
       s.counters.collects++;
@@ -355,6 +377,12 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
     s.deliver();
     s.counters.deliveries++;
     s.earn(income * s.multiplier * COMBO.deliverySeconds * chainMult);
+    for (const kind of bottles) {
+      const { reward } = openBottle(s, kind, trng);
+      // A 2x Cash boost is worth its length in extra income (whatever system consumes boost2xSec).
+      if (reward.boost2xSec) s.earn(s.baseIncomePerSec() * reward.boost2xSec);
+      applyReward(s, reward);
+    }
     log?.(play, `trip z${z}${golden ? ' golden' : ''} +${Math.round(s.cash - before)} cash ${Math.round(s.cash)} income ${s.incomePerSec().toFixed(1)}`);
     quests();
   };

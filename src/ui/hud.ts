@@ -30,6 +30,7 @@ import { controlsCardHtml, maybeCoach } from './parts/coach';
 import { CourseBarPart, type CourseLayout } from './parts/courseBar';
 import { RailPart } from './parts/rail';
 import { ResumePart } from './parts/resume';
+import { SeaPart } from './parts/sea';
 import { EdgeArrowPart, ReticlePart } from './parts/reticle';
 import { ToastsPart } from './parts/toasts';
 import { TouchPart } from './parts/touch';
@@ -49,6 +50,8 @@ const PANEL_TITLE: Record<PanelKind, string> = { shop: 'SHOP', index: 'INDEX', f
 const HIDEABLE: HudPart[] = ['cash', 'pearls', 'rail', 'wave', 'course', 'tracker', 'carry', 'chain', 'topRight'];
 
 export class Hud {
+  /** Treasure Bottles and Sea Events HUD (src/ui/parts/sea.ts). */
+  readonly sea: SeaPart;
   readonly jumpButton: HTMLButtonElement;
   readonly joyBase: HTMLElement;
   readonly joyKnob: HTMLElement;
@@ -207,6 +210,13 @@ export class Hud {
     this.layer.appendChild(this.revealFx.el);
     this.fxLayer.append(this.countEl, this.flashEl, this.resume.el);
 
+    // Treasure Bottles and Sea Events: chip under the wave meter, tint, bottle slot by the hotbar, opening cards.
+    this.sea = new SeaPart();
+    this.topCenter.appendChild(this.sea.chip);
+    this.ov.appendChild(this.sea.tint);
+    this.carry.el.appendChild(this.sea.slot);
+    this.layer.appendChild(this.sea.cards);
+
     this.watcher.onChange(() => this.onLayoutChange());
   }
 
@@ -260,6 +270,7 @@ export class Hud {
     this.wave.update(v.wave, reduce);
     this.course.update(v.course);
     this.carry.update(v.carried, v.capacity, v.tripBonusPct, reduce);
+    this.sea.update(v.sea);
     this.chain.update(v.chain, reduce);
     this.reticle.update(v.reticle, reduce);
     this.reticle.el.classList.toggle('under-hud', !!v.reticle && this.underTopBand(v.reticle.x, v.reticle.y));

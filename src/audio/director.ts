@@ -32,6 +32,8 @@ export class AudioDirector {
   // Logical state tracked even before unlock, so music starts in the right section.
   private phase: AudioFrame['wavePhase'] = 'calm';
   private golden = false;
+  /** A sea event is running: the agogo layer stays on (Treasure Bottles and Sea Events). */
+  private seaLayer = false;
   private warnDur = 0;
   private surgeT = -1;
   private cycle = 0;
@@ -138,7 +140,7 @@ export class AudioDirector {
   private startMusic(): void {
     const m = this.music;
     if (!m || m.isRunning) return;
-    m.golden = this.golden;
+    m.golden = this.golden || this.seaLayer;
     m.section = this.phase === 'warning' ? 'hurry' : this.phase === 'surge' ? 'surge' : 'song';
     m.start(1.5);
   }
@@ -281,7 +283,7 @@ export class AudioDirector {
         this.warnDur = 0;
         this.play('horn', { golden: e.golden });
         if (this.music) {
-          this.music.golden = e.golden;
+          this.music.golden = e.golden || this.seaLayer;
           this.music.warnProgress = 0;
           this.music.onWarning();
         }
@@ -292,7 +294,7 @@ export class AudioDirector {
         this.surgeT = 0;
         if (this.sfx && this.ctx?.state === 'running') this.sfx.crash();
         if (this.music) {
-          this.music.golden = e.golden;
+          this.music.golden = e.golden || this.seaLayer;
           this.music.onSurgeStart();
         }
         break;
@@ -309,6 +311,26 @@ export class AudioDirector {
       case 'washed':
       case 'spawned':
       case 'shopZone':
+        break;
+      // ---- Treasure Bottles and Sea Events ----
+      case 'bottleSpawn':
+        if (e.reason !== 'fleet') this.play('bottleSpawn', { golden: e.kind === 'legendary' });
+        break;
+      case 'bottlePickup':
+        this.play('bottlePickup');
+        break;
+      case 'bottleLost':
+        break;
+      case 'bottleOpen':
+        this.play('bottleOpen', { rarity: e.kind === 'legendary' || e.reward.creature ? 5 : 2 });
+        break;
+      case 'seaEvent':
+        if (e.phase === 'headsUp') this.play('seaBell');
+        else if (e.phase === 'start') this.play('seaStart');
+        else this.play('seaEnd');
+        // The Golden Wave's agogo layer plays through a sea event.
+        this.seaLayer = e.phase === 'start';
+        if (this.music) this.music.golden = this.golden || this.seaLayer;
         break;
     }
   }

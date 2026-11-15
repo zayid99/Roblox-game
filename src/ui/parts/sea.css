@@ -1,0 +1,72 @@
+/* Treasure Bottles and Sea Events (src/ui/parts/sea.ts) */
+
+/* ---- Event chip under the wave meter ---- */
+.sea-chip { position: relative; display: flex; align-items: center; gap: 6px; height: 34px; margin-top: 8px; padding: 0 12px 0 6px; border-radius: 999px;
+  border: 4px solid var(--ink); background: linear-gradient(180deg, var(--hud-dark), var(--hud-dark-lo)); box-shadow: 0 4px 0 var(--ink);
+  overflow: hidden; transition: opacity 200ms, transform 200ms var(--ease-back); pointer-events: none; }
+.sea-chip.off { opacity: 0; transform: scale(.6); }
+.sea-chip .sc-ic { display: flex; width: 26px; height: 26px; align-items: center; justify-content: center; }
+.sea-chip .sc-ic svg { width: 26px; height: 26px; }
+.sea-chip .sc-name { font-size: 16px; --sw: 5px; --sd: 2px; white-space: nowrap; }
+.sea-chip .sc-time { font-size: 16px; --sw: 5px; --sd: 2px; color: var(--sun); min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.sea-chip .sc-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.3); }
+.sea-chip .sc-bar i { display: block; height: 100%; transform-origin: left center; background: var(--sun); }
+.sea-chip.heads-up { animation: seaPulse 900ms ease-in-out infinite; }
+.sea-chip[data-ev="rainbowRain"] .sc-bar i { background: linear-gradient(90deg, #FF5A5A, #FFB02E, #FFE04A, #5BE36B, #3FC8FF, #8A6BFF, #FF6BD6); }
+.sea-chip[data-ev="treasureFleet"] .sc-bar i { background: var(--sun); }
+.sea-chip[data-ev="calmSeas"] .sc-bar i { background: #7FE3FF; }
+.sea-chip[data-ev="feedingFrenzy"] .sc-bar i { background: var(--coral); }
+@keyframes seaPulse { 50% { transform: scale(1.06); } }
+
+/* ---- Screen tint while an event runs ---- */
+.sea-tint { position: absolute; inset: 0; opacity: 0; transition: opacity 900ms; pointer-events: none;
+  -webkit-mask: radial-gradient(ellipse 70% 65% at 50% 50%, transparent 55%, #000 100%); mask: radial-gradient(ellipse 70% 65% at 50% 50%, transparent 55%, #000 100%); }
+.sea-tint.on { opacity: 1; }
+.sea-tint[data-ev="rainbowRain"] { background: conic-gradient(from 90deg, rgba(255,90,90,.42), rgba(255,176,46,.42), rgba(255,224,74,.42), rgba(91,227,107,.42), rgba(63,200,255,.42), rgba(138,107,255,.42), rgba(255,107,214,.42), rgba(255,90,90,.42)); }
+.sea-tint[data-ev="treasureFleet"] { background: rgba(255,201,46,.32); }
+.sea-tint[data-ev="calmSeas"] { background: rgba(140,230,255,.34); }
+.sea-tint[data-ev="feedingFrenzy"] { background: rgba(255,120,80,.3); }
+
+/* ---- Bottle slot beside the carry hotbar ---- */
+.bottle-slot { display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 36%, #E8FFFB 0%, #7FE7D8 60%, #2FB3A8 100%);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.5), 0 4px 0 var(--ink); }
+.bottle-slot[data-kind="legendary"] { background: radial-gradient(circle at 50% 36%, #FFF7C2 0%, #FFD54A 60%, #E8A21B 100%); }
+.bottle-slot.off { display: none; }
+.bottle-slot .bs-b { display: flex; margin-top: -14px; filter: drop-shadow(0 0 6px rgba(255,255,255,.8)); animation: bsBob 1.4s ease-in-out infinite; }
+.bottle-slot .bs-n { position: absolute; right: -8px; bottom: -8px; font-size: 16px; --sw: 5px; --sd: 2px; }
+.bottle-slot.pop { animation: bsPop 360ms var(--ease-back); }
+@keyframes bsBob { 50% { transform: translateY(-3px) rotate(6deg); } }
+@keyframes bsPop { from { transform: scale(.4); } }
+[data-layout="landscape"] .bottle-slot .bs-b svg, [data-layout="portrait"] .bottle-slot .bs-b svg { width: 36px; height: 36px; }
+
+/* ---- Opening card (centre, above the reveal host) ---- */
+.sea-cards { left: 50%; top: 33%; translate: -50% 0; z-index: var(--z-reveal); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.sea-card { position: relative; width: 330px; display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 8px; border-radius: 20px; border: 4px solid var(--ink);
+  background: var(--card); box-shadow: inset 0 -5px 0 var(--card-shade), 0 5px 0 var(--ink); animation: scdIn 280ms var(--ease-back) both; }
+.sea-card.k-legendary { background: linear-gradient(180deg, #FFF7D6, #FFE7A0); box-shadow: inset 0 -5px 0 #F2CF6E, 0 0 0 3px var(--sun), 0 5px 0 var(--ink); }
+.sea-card.out { animation: scdOut 200ms var(--ease-in) both; }
+.sea-card .scd-stage { position: relative; width: 90px; height: 90px; flex: none; display: flex; align-items: center; justify-content: center; }
+.sea-card .scd-bottle { display: flex; animation: scdShake 160ms ease-in-out infinite; }
+.sea-card .scd-prize { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(.3); }
+.sea-card .scd-prize svg { width: 64px; height: 64px; }
+.sea-card.popped .scd-bottle { animation: scdPop 260ms var(--ease-in) both; }
+.sea-card.popped .scd-prize { opacity: 1; transform: none; transition: transform 320ms var(--ease-back) 120ms, opacity 120ms 120ms; }
+.sea-card.popped .scd-stage::after { content: ''; position: absolute; inset: -6px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,240,150,.85), rgba(255,240,150,0) 70%); animation: scdBurst 600ms ease-out both; }
+.sea-card .scd-info { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; flex: 1; opacity: .25; transition: opacity 200ms 150ms; }
+.sea-card.popped .scd-info { opacity: 1; }
+.sea-card .scd-st { height: 20px; padding: 0 8px; border-radius: 6px; background: #2FB3A8; border: 3px solid var(--ink); font: 400 13px/14px var(--display); color: #fff; rotate: -4deg; }
+.sea-card.k-legendary .scd-st { background: var(--grape); }
+.sea-card .scd-title { font-size: 26px; --sw: 6px; --sd: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sea-card.p-cash .scd-title { color: var(--sun); }
+.sea-card .scd-sub { font: 400 15px/1.1 var(--display); color: var(--text-ink); }
+.sea-card .scd-odds { font: 600 10px/1.25 var(--body, system-ui); color: rgba(27,23,54,.6); }
+@keyframes scdIn { from { transform: translateY(-30px) scale(.7); opacity: 0; } }
+@keyframes scdOut { to { transform: translateY(-20px) scale(.9); opacity: 0; } }
+@keyframes scdShake { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+@keyframes scdPop { to { transform: translateY(-30px) scale(1.4); opacity: 0; } }
+@keyframes scdBurst { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+[data-layout="portrait"] .sea-cards { top: calc(var(--st) + 230px); }
+[data-layout="portrait"] .sea-card { width: 300px; }
+[data-layout="landscape"] .sea-cards { top: 26%; }
+@media (prefers-reduced-motion: reduce) { .sea-chip.heads-up, .bottle-slot .bs-b, .sea-card .scd-bottle { animation: none; } }

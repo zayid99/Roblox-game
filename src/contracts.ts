@@ -66,7 +66,23 @@ export type SimEvent =
   | { type: 'surgeEnd'; golden: boolean; big: boolean; number: number; survived: boolean }
   | { type: 'washed'; uids: number[] }
   | { type: 'spawned'; golden: boolean }
-  | { type: 'shopZone' };
+  | { type: 'shopZone' }
+  // Treasure Bottles and Sea Events (src/game/treasure.ts, src/game/seaEvents.ts)
+  | { type: 'bottleSpawn'; uid: number; kind: BottleKind; pos: Vector3; islandOrder: number; reason: 'wave' | 'fleet' | 'debug' }
+  | { type: 'bottlePickup'; uid: number; kind: BottleKind }
+  | { type: 'bottleLost'; kinds: BottleKind[]; how: 'splash' | 'washed' }
+  | { type: 'bottleOpen'; kind: BottleKind; prize: TreasurePrizeKind; reward: Reward; discovery: string | null }
+  | { type: 'seaEvent'; id: SeaEventId; phase: 'headsUp' | 'start' | 'end' };
+// ---------- Treasure Bottles and Sea Events (r4 proposals 7 and 10) ----------
+export type BottleKind = 'normal' | 'legendary';
+export type TreasurePrizeKind = 'cash' | 'pearls' | 'boost' | 'luckyTide' | 'creature' | 'rainbow';
+export type SeaEventId = 'rainbowRain' | 'treasureFleet' | 'calmSeas' | 'feedingFrenzy';
+/** HUD view of the sea: the event chip (heads-up countdown or time left) and the bottles in play. */
+export interface SeaHudView {
+  event: { id: SeaEventId; name: string; sub: string; phase: 'headsUp' | 'active'; secondsLeft: number; frac: number /* 1 → 0 */ } | null;
+  carriedBottles: BottleKind[];
+  worldBottles: number;
+}
 export interface SimOverrides { waveFrozen: boolean; practiceWave: boolean }
 
 // ---------- HUD ----------
@@ -92,6 +108,7 @@ export interface HudView {
   edgeArrow: { x: number; y: number; angle: number; icon: IconId; label: string } | null;
   vignette: { kind: 'none' | 'danger' | 'slowmo' | 'speed'; strength: number };
   hide: Partial<Record<HudPart, boolean>>;
+  sea?: SeaHudView;                                 // Treasure Bottles / Sea Events (src/ui/parts/sea.ts)
 }
 export interface ToastSpec { text: string; kind: 'info' | 'good' | 'warn' | 'bad'; icon?: IconId; onTap?: () => void; action?: { label: string; icon: IconId; onTap: () => void } /* ad slot */ }
 export interface BannerSpec { title: string; sub?: string; hue: 'grass' | 'sun' | 'coral' | 'sky' | 'grape' | 'gold' | `r${0|1|2|3|4|5|6}`; priority: 'wave' | 'reveal' | 'zone' | 'tutorial' | 'info'; ms?: number }
