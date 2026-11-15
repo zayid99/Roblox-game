@@ -157,6 +157,7 @@ export function buildHudView(i: HudViewInput): HudView {
     action,
     rail: progression.railState(state.cash, sim.isOnHome()),
     tracker: i.tracker !== undefined ? i.tracker : progression.tracker(),
+    boostSec: state.tokens.boost2xSec, // economy: the 2× Cash Boost chip
     jumpLabel,
     jumpGoldRim: sim.perfectWindow,
     reticle,

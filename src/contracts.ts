@@ -13,7 +13,7 @@ export type QualityTier = 'low' | 'medium' | 'high';
 export type QualitySetting = 'auto' | QualityTier;
 export type RailId = 'shop' | 'free' | 'index' | 'rebirth' | 'hatchery';
 export type PanelKind = 'shop' | 'index' | 'free' | 'settings' | 'welcome' | 'hatchery';
-export type PanelTab = 'upgrades' | 'locker' | 'rebirth' /* shop */ | 'daily' | 'gifts' /* free */ | 'eggs' | 'buddy' /* hatchery */;
+export type PanelTab = 'upgrades' | 'locker' | 'rebirth' /* shop */ | 'daily' | 'gifts' | 'missions' /* free */ | 'eggs' | 'buddy' /* hatchery */;
 export type HudPart = 'cash' | 'pearls' | 'rail' | 'wave' | 'course' | 'tracker' | 'carry' | 'chain' | 'topRight';
 export type FtueStepId = 'grab' | 'release' | 'collect' | 'home' | 'earn' | 'shop' | 'wave' | 'ready';
 export type Surface = 'grass' | 'sand' | 'wood';
@@ -21,7 +21,7 @@ export type IconId =
   | 'cash' | 'pearl' | 'shop' | 'index' | 'rebirth' | 'gift' | 'locker' | 'settings' | 'sound-on' | 'sound-off'
   | 'speed' | 'reach' | 'power' | 'carry' | 'pedestal' | 'wave' | 'lighthouse' | 'home' | 'lock' | 'check' | 'close'
   | 'play' | 'arrow-up' | 'chevron' | 'chain' | 'perfect' | 'sparkle' | 'flame' | 'lucky-tide' | 'gem' | 'creature'
-  | 'warning' | 'hand' | 'thumb' | 'egg' | 'buddy';
+  | 'warning' | 'hand' | 'thumb' | 'egg' | 'buddy' | 'boost';
 
 export interface Settings {
   music: number; sound: number; muted: boolean; quality: QualitySetting; autoTier: QualityTier | null;
@@ -86,7 +86,11 @@ export interface SeaHudView {
 export interface SimOverrides { waveFrozen: boolean; practiceWave: boolean }
 
 // ---------- HUD ----------
-export interface RailTileState { visible: boolean; badge: number | '!' | null; arrow: boolean; timer?: string; wiggle: boolean; label?: string }
+export interface RailTileState {
+  visible: boolean; badge: number | '!' | null; arrow: boolean; timer?: string; wiggle: boolean; label?: string;
+  /** FREE tile: the next playtime gift's prize, shown next to its countdown (economy). */
+  prize?: { icon: IconId; text: string };
+}
 export interface TrackerRow { icon: IconId; text: string; progress: number /* 0..1 */; reward: Reward; done: boolean }
 export interface TrackerView { title: string; count: string; rows: TrackerRow[] }
 export interface HudView {
@@ -101,6 +105,8 @@ export interface HudView {
   action: boolean;                                  // §4.4 fade
   rail: Record<RailId, RailTileState>;
   tracker: TrackerView | null;
+  /** 2× Cash Boost seconds left (economy); 0 or missing = no chip. */
+  boostSec?: number;
   jumpLabel: 'JUMP' | 'SWING' | 'LET GO'; jumpGoldRim: boolean;
   reticle: { kind: 'hook'; x: number; y: number; locked: boolean; reach?: number; keyHint: boolean }
          | { kind: 'release'; x: number; y: number }   // shown only while sim.perfectWindow (C17)
@@ -126,7 +132,15 @@ export interface IndexView { found: number; total: number; entries: IndexEntry[]
 export interface DailyTile { day: number; reward: Reward; state: 'claimed' | 'today' | 'tomorrow' | 'later'; teaser: boolean }
 export interface DailyView { tiles: DailyTile[]; streak: number; claimable: boolean; resetIn: number }
 export interface GiftsView { gifts: { atMin: number; reward: Reward; state: 'locked' | 'ready' | 'claimed'; secondsLeft: number }[]; resetIn: number }
-export interface FreeView { daily: DailyView; gifts: GiftsView; luckyTide: number; streak: number }
+export interface MissionRow {
+  text: string; icon: IconId; tier: 'easy' | 'medium' | 'hard'; value: number; target: number; progress: number /* 0..1 */;
+  reward: Reward; claimable: boolean; claimed: boolean; canReroll: boolean;
+}
+/** Daily Missions (economy): unlocked after the tutorial; resetIn = seconds to local midnight. */
+export interface MissionsView { unlocked: boolean; rows: MissionRow[]; bonus: { reward: Reward; claimable: boolean; claimed: boolean }; resetIn: number }
+/** 2× Cash Boost: seconds stored; canAd = a rewarded ad can add adSec (the lead also requires the SDK). */
+export interface BoostView { sec: number; canAd: boolean; adSec: number; capSec: number }
+export interface FreeView { daily: DailyView; gifts: GiftsView; luckyTide: number; streak: number; missions: MissionsView; boost: BoostView }
 export interface LockerItemView { id: string; kind: 'rope'; name: string; rarity: number; price: number | null; source: string | null; owned: boolean; equipped: boolean; isNew: boolean; colors: string[]; stripesPerM: number }
 export interface LockerView { pearls: number; items: LockerItemView[] }
 export interface WelcomeView { offline: number; daily: DailyTile | null; pendingGifts: Reward[]; canDouble: boolean }
@@ -139,6 +153,8 @@ export interface PanelData {
 export interface UiActions {
   buyUpgrade(key: UpgradeKey, n: 1 | 5 | 'max'): boolean /* false = can't afford or maxed (stops hold-repeat) */; rebirth(): void;
   claimDaily(): void; claimGift(i: number | 'all'): void; useLuckyTide(): void;
+  claimMission(i: number | 'bonus'): void; rerollMission(i: number): void;
+  watchBoostAd(): void;                             // rewarded ad: +BOOST.adSec of 2× cash (lead runs it)
   buyCosmetic(id: string): void; equipCosmetic(id: string): void;
   setSettings(patch: Partial<Settings>): void; replayTutorial(): void;
   collectWelcome(double: boolean): void;            // double = watch a rewarded ad first (lead runs it)

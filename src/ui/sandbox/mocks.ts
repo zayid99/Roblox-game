@@ -262,7 +262,19 @@ export function makePanelData(s: MockState): PanelData {
         state: (s.giftsClaimed.has(i) ? 'claimed' : i < 2 + s.giftsReady ? 'ready' : 'locked') as 'claimed' | 'ready' | 'locked',
         secondsLeft: Math.max(0, atMin * 60 - 290),
       }));
-      return { daily: { tiles, streak: s.streak, claimable: s.dailyClaimable, resetIn: 7 * 3600 + 12 * 60 }, gifts: { gifts, resetIn: 7 * 3600 }, luckyTide: s.luckyTide, streak: s.streak };
+      return { daily: { tiles, streak: s.streak, claimable: s.dailyClaimable, resetIn: 7 * 3600 + 12 * 60 }, gifts: { gifts, resetIn: 7 * 3600 }, luckyTide: s.luckyTide, streak: s.streak,
+        missions: {
+          unlocked: true,
+          rows: [
+            { text: 'Grab 15 hooks', icon: 'hand', tier: 'easy', value: 15, target: 15, progress: 1, reward: { cash: 540 }, claimable: true, claimed: false, canReroll: false },
+            { text: 'Catch 12 creatures', icon: 'creature', tier: 'medium', value: 5, target: 12, progress: 5 / 12, reward: { cash: 900, pearls: 10 }, claimable: false, claimed: false, canReroll: true },
+            { text: 'Catch a mutated creature', icon: 'sparkle', tier: 'hard', value: 0, target: 1, progress: 0, reward: { boost2xSec: 600, pearls: 20 }, claimable: false, claimed: false, canReroll: true },
+          ],
+          bonus: { reward: { creature: { speciesId: 'crab_dj', mutation: 1 }, pearls: 25 }, claimable: false, claimed: false },
+          resetIn: 7 * 3600 + 12 * 60,
+        },
+        boost: { sec: 179, canAd: true, adSec: 300, capSec: 1800 },
+      };
     },
     locker: () => ({
       pearls: s.pearls,
@@ -294,6 +306,9 @@ export function makeActions(s: MockState, log: (msg: string) => void, hooks: { p
       return bought > 0;
     },
     rebirth() { s.cash = 0; s.rebirths++; log('rebirth'); },
+    claimMission(i) { log(`claimMission ${i}`); },
+    rerollMission(i) { log(`rerollMission ${i}`); },
+    watchBoostAd() { log('watchBoostAd'); },
     claimDaily() { s.dailyClaimable = false; s.dailyCount++; s.pearls += 10; s.cash += 900; log('claimDaily'); },
     claimGift(i) {
       const list = i === 'all' ? GIFTS.map((_, k) => k) : [i];

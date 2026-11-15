@@ -1,10 +1,11 @@
 // A fast pacing simulator for tests/pacing.test.ts. Everything economic is the real game code: GameState (deliver,
 // place, sell, income, tick, buy, rebirth), rollCreature, the upgrade/rebirth/offline formulas, the delivery bonus,
-// First Voyage quests (their real `done` predicates and rewards), playtime gifts, the Daily calendar and the FTUE
-// step rewards. Only the player is abstracted: a trip to a zone takes the measured time of the "typical" profile of
+// First Voyage and Deep Voyage quests (their real `done` predicates and rewards), playtime gifts, the Daily calendar,
+// Daily Missions, the 2× Cash Boost and the FTUE step rewards. Only the player is abstracted: a trip to a zone takes
+// the measured time of the "typical" profile of
 // the full pacing model (real PlayerSim crossings, sea falls, wave waits; 3 h of play per run), and the player
-// follows a simple, human-like shopping rule. It runs a whole first climb plus several rebirths in well under a
-// second, so it can guard the pacing bands.
+// follows a simple, human-like shopping rule (and what the quest tracker asks for). It runs a whole first climb plus
+// several rebirths in well under a second, so it can guard the pacing bands.
 import { COMBO, ECONOMY, WAVE } from '../src/game/config';
 import { ComboTracker } from '../src/game/combo';
 import { creatureIncome, getSpecies, rollCreature, type CreatureRef } from '../src/game/creatures';
@@ -13,8 +14,9 @@ import {
   UPGRADES, baseSlots, bulkCost, carryCapacity, offlineEarnings, reachGateLevel, type UpgradeKey,
 } from '../src/game/economy';
 import { GIFTS } from '../src/game/gifts';
-import { eggCost, eggUnlocked } from '../src/game/hatchery';
-import { VOYAGE } from '../src/game/quests';
+import { deliveryMult, eggCost, eggUnlocked, hatchEgg } from '../src/game/hatchery';
+import { MISSION_BONUS, MISSION_REWARDS, ensureMissions, missionBonusClaimable, missionClaimable } from '../src/game/missions';
+import { activeQuest, type QuestDef } from '../src/game/quests';
 import { applyReward, minutes, resolveReward } from '../src/game/rewards';
 import { Rng } from '../src/game/rng';
 import { SEA, SEA_EVENT_IDS } from '../src/game/seaEvents';
@@ -58,6 +60,21 @@ export interface PacingOptions {
    * home (at most one per trip, plus Treasure Fleet bottles). 0 (default) = the game without bottles.
    */
   treasureShare?: number;
+  /** Debug/cadence: every reward moment (gift, quest, mission, daily, purchase) with the cash it paid. */
+  events?: PacingEvent[];
+}
+
+export interface PacingEvent {
+  /** Seconds of play. */
+  t: number;
+  kind: 'gift' | 'quest' | 'mission' | 'daily' | 'buy' | 'zone';
+  text: string;
+  /** Cash paid (rewards) or spent (purchases). */
+  cash: number;
+  /** Base income ($/s) at that moment (before the reward). */
+  income: number;
+  /** A quest the player completed by doing what it asked right then (a purchase, a Buddy): not a passive lump. */
+  byPlayer?: boolean;
 }
 
 export interface Purchase {
@@ -76,6 +93,9 @@ export interface PacingResult {
   incomeAtVisit: number[];
   /** Seconds of play at each rebirth. */
   rebirths: number[];
+  /** Seconds of play when each First Voyage quest (index = n - 1) and Deep Voyage quest was completed. */
+  questAt: number[];
+  deepAt: number[];
   purchases: Purchase[];
   /** Levels of each upgrade bought before the first rebirth. */
   levelsBeforeRebirth: Record<UpgradeKey, number>;
@@ -134,6 +154,8 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
     incomeAtGate: ZONES.map(() => NaN),
     incomeAtVisit: ZONES.map((_, i) => (i === 0 ? 0 : NaN)),
     rebirths: [],
+    questAt: [],
+    deepAt: [],
     purchases: [],
     levelsBeforeRebirth: { speed: 0, reach: 0, power: 0, carry: 0, slots: 0 },
     firstDeliverSec: TYPICAL_FTUE.firstDeliverSec,
@@ -156,21 +178,66 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   let sessionStart = 0;
   let session = 1;
   let giftsClaimed = 0;
+  /** Gifts are claimable once the tutorial is over (the FREE tile unlocks then). */
+  let giftsOpen = false;
+  /** Set while the player follows the quest tracker (the quest it completes is their own doing). */
+  let following = false;
+  const ev = (kind: PacingEvent['kind'], text: string, cash: number) =>
+    opts.events?.push({ t: play, kind, text, cash, income: s.baseIncomePerSec(), ...(following && kind === 'quest' ? { byPlayer: true } : {}) });
 
-  const advance = (sec: number) => {
-    s.tick(sec);
-    play += sec;
-    while (res.incomeByMinute.length < Math.floor(play / 60)) res.incomeByMinute.push(s.incomePerSec());
+  /** Applies a reward spec; returns the cash it paid. */
+  const grant = (spec: Parameters<typeof resolveReward>[1]): number => {
+    const before = s.cash;
+    applyReward(s, resolveReward(s, spec, rng));
+    return s.cash - before;
+  };
+
+  /** Waves since the session started (wave n at firstInterval + (n - 1) × interval): all survived. */
+  let wavesSeen = 0;
+  const countWaves = () => {
     const active = play - sessionStart;
-    while (giftsClaimed < GIFTS.length && active >= GIFTS[giftsClaimed].atMin * 60) {
-      const before = s.cash;
-      applyReward(s, resolveReward(s, GIFTS[giftsClaimed].spec, rng));
-      log?.(play, `gift ${giftsClaimed} +${Math.round(s.cash - before)}`);
+    const n = active < WAVE.firstInterval ? 0 : Math.floor((active - WAVE.firstInterval) / WAVE.interval) + 1;
+    while (wavesSeen < n) {
+      wavesSeen++;
+      s.counters.wavesSurvived++;
+      if (wavesSeen % WAVE.bigEvery === 0) s.counters.bigWavesSurvived++;
+    }
+  };
+
+  /**
+   * Play time passes: pedestal income (doubled while a 2× Cash Boost runs, which counts down with play), waves, and
+   * playtime gifts claimed the moment they unlock. Steps stop at each gift and at the boost's end.
+   */
+  const claimGifts = () => {
+    while (giftsOpen && giftsClaimed < GIFTS.length && play - sessionStart >= GIFTS[giftsClaimed].atMin * 60 - 1e-6) {
+      const cash = grant(GIFTS[giftsClaimed].spec);
+      ev('gift', `gift @${GIFTS[giftsClaimed].atMin} min ${JSON.stringify(GIFTS[giftsClaimed].spec)}`, cash);
+      log?.(play, `gift ${giftsClaimed} +${Math.round(cash)}`);
       giftsClaimed++;
+    }
+  };
+  const advance = (sec: number) => {
+    claimGifts();
+    let left = sec;
+    while (left > 1e-9) {
+      const active = play - sessionStart;
+      const toGift = giftsOpen && giftsClaimed < GIFTS.length ? GIFTS[giftsClaimed].atMin * 60 - active : Infinity;
+      const boost = s.tokens.boost2xSec;
+      let dt = left;
+      if (toGift > 1e-9) dt = Math.min(dt, toGift);
+      if (boost > 1e-9) dt = Math.min(dt, boost);
+      s.tick(dt);
+      if (boost > 0) s.tokens.boost2xSec = Math.max(0, boost - dt);
+      play += dt;
+      left -= dt;
+      while (res.incomeByMinute.length < Math.floor(play / 60)) res.incomeByMinute.push(s.incomePerSec());
+      countWaves();
+      claimGifts();
     }
   };
   const record = (item: string, cost: number) => {
     res.purchases.push({ t: play, item, cost });
+    ev('buy', item, -cost);
     noteStretch(play);
     lastOk = play;
     if (play === welcomeAt && s.rebirths === 0 && item.includes('gate')) res.maxGatesPerWelcome = Math.max(res.maxGatesPerWelcome, ++welcomeGates);
@@ -183,18 +250,40 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
     }
   };
   const log = opts.log;
+  /** First Voyage, then Deep Voyage (as Progression does: each satisfied quest pays and the next one becomes current). */
   const quests = () => {
-    while (s.voyage.step < VOYAGE.length && VOYAGE[s.voyage.step].done(s)) {
-      const before = s.cash;
-      applyReward(s, resolveReward(s, VOYAGE[s.voyage.step].reward, rng));
-      log?.(play, `quest ${VOYAGE[s.voyage.step].n} +${Math.round(s.cash - before)}`);
-      s.voyage.step++;
+    for (let a = activeQuest(s); a && a.q.done(s); a = activeQuest(s)) {
+      const cash = grant(a.q.reward);
+      ev('quest', `${a.line === 'deep' ? 'D' : 'Q'}${a.q.n} ${a.q.text}`, cash);
+      log?.(play, `${a.line} quest ${a.q.n} +${Math.round(cash)}`);
+      if (a.line === 'first') {
+        res.questAt[a.q.n - 1] = play;
+        s.voyage.step++;
+      } else {
+        res.deepAt[a.q.n - 1] = play;
+        s.voyage.deep = (s.voyage.deep ?? 0) + 1;
+      }
     }
+    missions();
   };
+  const dayOf = (n: number) => new Date(Date.UTC(2026, 0, n)).toISOString().slice(0, 10);
   const claimDaily = () => {
-    const day = new Date(Date.UTC(2026, 0, session)).toISOString().slice(0, 10);
-    const d = recordDailyClaim(s.daily, day);
-    applyReward(s, resolveReward(s, dailySpec(d, s.daily.week, s.cosmetics.owned), rng));
+    const d = recordDailyClaim(s.daily, dayOf(session));
+    ev('daily', `daily day ${d}`, grant(dailySpec(d, s.daily.week, s.cosmetics.owned)));
+  };
+  /** Daily Missions: rolled each session day after the tutorial, claimed as soon as they are done. */
+  const missions = () => {
+    if (!s.ftue.done) return;
+    ensureMissions(s, dayOf(session));
+    s.missions.list.forEach((m, i) => {
+      if (!missionClaimable(s, i)) return;
+      m.claimed = true;
+      ev('mission', `mission ${m.tpl}`, grant(MISSION_REWARDS[m.tier]));
+    });
+    if (missionBonusClaimable(s)) {
+      s.missions.bonusClaimed = true;
+      ev('mission', 'missions bonus', grant(MISSION_BONUS));
+    }
   };
 
   // ---- FTUE: two Commons delivered, the step rewards, and the tutorial's Rope Reach purchase (Coral Reef gate).
@@ -204,6 +293,8 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   s.counters.grabs = 2;
   s.counters.collects = 2;
   s.counters.deliveries = 1;
+  s.counters.creaturesDelivered = 2;
+  s.counters.collectsByRarity[0] = 2;
   s.bestZone = 0;
   for (const st of Object.values(STEPS)) {
     if (st.reward === 'min2') s.earn(minutes(s, 2));
@@ -215,6 +306,8 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   record('reach->1 (tutorial)', UPGRADES.reach.costs?.[0] ?? 0);
   s.ftue.done = true;
   s.voyage.step = 6;
+  giftsOpen = true;
+  advance(0);
   claimDaily();
 
   // Short trips still have to fit between waves: at most one per wave cycle.
@@ -223,16 +316,54 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   const tripMult = opts.tripTimeMult ?? 1;
   const tripPlaySec = (z: number) => Math.max(WAVE.interval, (TYPICAL_TRIP_SEC[z] * tripMult) / tripShare);
 
-  /** One step of the shopping rule. Returns true if something was bought. */
-  const shopOnce = (): boolean => {
-    // The First Voyage tracker asks for Carry Slots (quest 10): people follow it.
-    if (VOYAGE[s.voyage.step]?.n === 10 && s.levels.carry === 0 && s.canBuy('carry')) {
-      const c = s.upgradeCost('carry');
-      s.buy('carry');
-      record('carry->1 (quest)', c);
+  /** Does what the quest tracker asks for (pedestals, carry slots, an egg, a Buddy) when it can. */
+  const followQuest = (q: QuestDef): boolean => {
+    following = true;
+    try {
+      return followQuest1(q);
+    } finally {
+      following = false;
+    }
+  };
+  const followQuest1 = (q: QuestDef): boolean => {
+    if (q.done(s)) return false;
+    if (q.buy === 'buddy') {
+      let best: CreatureRef | null = null;
+      for (const c of s.base) if (c && (!best || getSpecies(c.speciesId).rarity > getSpecies(best.speciesId).rarity)) best = c;
+      if (!best) return false;
+      s.buddy = { ...best };
       quests();
       return true;
     }
+    if (q.buy === 'egg') {
+      // The best egg of a zone reached (not the Shallows Egg: a player in Coral Reef buys the Reef Egg).
+      for (let ze = Math.min(reachableZone(s), s.bestZone); ze >= Math.max(1, q.eggZone ?? 0); ze--) {
+        if (!eggUnlocked(s, ze) || s.cash < eggCost(s, ze)) continue;
+        const c = eggCost(s, ze);
+        if (typeof hatchEgg(s, ze, rng) === 'string') continue;
+        record(`hatch ${ZONES[ze].name} Egg (quest)`, c);
+        quests();
+        return true;
+      }
+      return false;
+    }
+    // Pedestals only when the base is full (the quest is "Fill N pedestals").
+    if (q.buy === 'slots' && s.base.some((c) => c === null)) return false;
+    if ((q.buy === 'slots' || q.buy === 'carry') && s.canBuy(q.buy)) {
+      const c = s.upgradeCost(q.buy);
+      s.buy(q.buy);
+      record(`${q.buy}->${s.levels[q.buy]} (quest)`, c);
+      quests();
+      return true;
+    }
+    return false;
+  };
+
+  /** One step of the shopping rule. Returns true if something was bought. */
+  const shopOnce = (): boolean => {
+    // The quest tracker asks for something to buy: people follow it.
+    const aq = activeQuest(s);
+    if (aq && aq.q.buy && followQuest(aq.q)) return true;
     const inc = Math.max(1e-9, s.incomePerSec());
     const mult = s.multiplier * s.streakBonus;
     const zMax = reachableZone(s);
@@ -334,9 +465,16 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   const trip = () => {
     const z = reachableZone(s);
     // Golden batch (every WAVE.goldenEvery-th wave of a session): players time their trips to bring some home.
-    const waves = Math.floor((play - sessionStart - WAVE.firstInterval) / WAVE.interval) + 1;
+    // Only once a Golden Wave (every WAVE.goldenEvery-th) has come by the end of this trip.
+    const waves = Math.floor((play + tripPlaySec(z) - sessionStart - WAVE.firstInterval) / WAVE.interval) + 1;
     const goldenOdds = Math.min(1, tripPlaySec(z) / (WAVE.interval * WAVE.goldenEvery)) * goldenShare;
-    const golden = waves >= 1 && rng.next() < goldenOdds;
+    let golden = waves >= WAVE.goldenEvery && rng.next() < goldenOdds;
+    // The quest asks for a Golden Wave catch and a Lucky Tide is in hand (8-min gift): the player uses it (the FREE
+    // panel's USE) and usually times the trip to catch the golden batch.
+    if (!golden && s.tokens.luckyTide > 0 && activeQuest(s)?.q.text.includes('Golden Wave')) {
+      s.tokens.luckyTide--;
+      golden = rng.next() < 0.75;
+    }
     // The batch on the target zone's islands and the zone before it (picked up on the way).
     const batch: { c: CreatureRef; zone: number }[] = [];
     for (const zz of z > 0 ? [z - 1, z] : [z]) {
@@ -358,29 +496,50 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
       if (trng.next() < fleetOdds) for (let i = 0; i < TREASURE.fleetCount; i++) if (trng.next() < tShare) bottles.push('normal');
     }
     const take = batch.slice(0, Math.max(0, carryCapacity(s.levels) - bottles.length));
+    if (Number.isNaN(res.incomeAtVisit[z])) {
+      res.incomeAtVisit[z] = s.incomePerSec();
+      if (z > 0) ev('zone', `first trip into ${ZONES[z].name}`, 0);
+    }
+    const T = tripPlaySec(z);
+    watchAffordable(T);
+    // Out to the zone (quests about reaching it pay on arrival), the catches, a wave ridden out on a lighthouse on the
+    // way back, then home: quests complete when their event happens, not all at the delivery.
+    advance(0.35 * T);
+    s.bestZone = Math.max(s.bestZone, z);
+    quests();
+    advance(0.15 * T);
     for (const { c } of take) {
       s.pickUp(c);
       s.counters.collects++;
       s.counters.collectsByRarity[getSpecies(c.speciesId).rarity]++;
+      if (c.mutation > 0) s.counters.mutatedCollects++;
       if (golden) s.counters.goldenBatchCollects++;
     }
     s.counters.grabs += 2 * (z + 1);
-    if (z >= 1) s.counters.padLaunchesInWave = Math.max(1, s.counters.padLaunchesInWave);
-    if (Number.isNaN(res.incomeAtVisit[z])) res.incomeAtVisit[z] = s.incomePerSec();
-    s.bestZone = Math.max(s.bestZone, z);
-    watchAffordable(tripPlaySec(z));
-    advance(tripPlaySec(z));
+    // About one Perfect Release in five grabs, and the trip's chain (as the delivery bonus below assumes).
+    s.counters.perfects += Math.round(0.4 * (z + 1));
+    s.counters.bestChainToday = Math.max(s.counters.bestChainToday, Math.round(2 * (z + 1) * 1.25 * 0.8));
+    quests();
+    advance(0.2 * T);
+    // Out at sea when a wave comes: the player rides it out on a lighthouse when the tracker asks for it (players
+    // otherwise head home for waves, as the game tells them).
+    if (z >= 1 && activeQuest(s)?.q.icon === 'lighthouse') s.counters.lighthouseWaves++;
+    quests();
+    advance(0.3 * T);
     let income = 0;
     for (const c of s.carried) income += creatureIncome(c);
     const chainMult = ComboTracker.chainMult(Math.round(2 * (z + 1) * 1.25 * 0.8));
     const before = s.cash;
+    const n = s.carried.length;
+    // Delivery cash as sim.ts pays it: × the Buddy bonus and the 2× Cash Boost (deliveryMult).
+    const mult = deliveryMult(s);
     s.deliver();
     s.counters.deliveries++;
-    s.earn(income * s.multiplier * COMBO.deliverySeconds * chainMult);
+    s.counters.creaturesDelivered += n;
+    s.earn(income * s.multiplier * COMBO.deliverySeconds * chainMult * mult);
     for (const kind of bottles) {
       const { reward } = openBottle(s, kind, trng);
-      // A 2x Cash boost is worth its length in extra income (whatever system consumes boost2xSec).
-      if (reward.boost2xSec) s.earn(s.baseIncomePerSec() * reward.boost2xSec);
+      // A 2x Cash boost lands in tokens.boost2xSec, which the time steps above consume (no extra income here).
       applyReward(s, reward);
     }
     log?.(play, `trip z${z}${golden ? ' golden' : ''} +${Math.round(s.cash - before)} cash ${Math.round(s.cash)} income ${s.incomePerSec().toFixed(1)}`);
@@ -390,6 +549,7 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
   quests();
   while (play < maxPlay && s.rebirths < maxRebirths) {
     while (shopOnce());
+    quests();
     const z = reachableZone(s);
     if (play - sessionStart + tripPlaySec(z) > sessionSec) {
       // End of the session: the next one starts a day later with the offline hour, the Daily and fresh gifts.
@@ -397,7 +557,11 @@ export function simulatePacing(opts: PacingOptions = {}): PacingResult {
       session++;
       sessionStart = play;
       giftsClaimed = 0;
+      wavesSeen = 0;
+      s.counters.bestChainToday = 0;
       claimDaily();
+      missions();
+
       welcomeAt = play;
       welcomeGates = 0;
       continue;

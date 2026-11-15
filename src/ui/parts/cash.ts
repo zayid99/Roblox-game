@@ -1,6 +1,7 @@
 // C4 currency pills: cash (with income and rebirth chips) and pearls.
+import '../economy.css';
 import { formatBalance, formatIncome, formatPearls } from '../../game/economy';
-import { el, gradText, replay, setText } from '../dom';
+import { el, fmtClock, gradText, pressable, replay, setText } from '../dom';
 import { icon } from '../icons';
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -90,7 +91,11 @@ export class CashPart {
   private readonly incomeTxt: HTMLElement;
   private readonly multChip: HTMLElement;
   private readonly incomeRow: HTMLElement;
-  private last = { income: -1, mult: -1, pearlsShown: false, rebirths: -1 };
+  private last = { income: -1, mult: -1, pearlsShown: false, rebirths: -1, boost: '' };
+  /** 2× Cash Boost chip "2× 4:59" (economy; DESIGN_V2 C4); tapping it opens the FREE panel. */
+  private readonly boostChip: HTMLElement;
+  private readonly boostTxt: HTMLElement;
+  onBoostTap: (() => void) | null = null;
   /** Amount still "in flight" from coin flies; shown values exclude it until coins land. */
   heldCash = 0;
   heldPearls = 0;
@@ -105,6 +110,12 @@ export class CashPart {
     this.pearlIcon = this.pearlPill.querySelector('.ic') as HTMLElement;
     this.incomeTxt = this.incomeRow.querySelector('.inc') as HTMLElement;
     this.multChip = this.incomeRow.querySelector('.mult') as HTMLElement;
+    this.boostChip = el('button', 'chip chip--sun boost-chip', '<span class="bt"></span>');
+    this.boostChip.style.display = 'none';
+    this.boostChip.dataset.anchor = 'boost';
+    this.boostTxt = this.boostChip.querySelector('.bt') as HTMLElement;
+    pressable(this.boostChip, () => this.onBoostTap?.());
+    this.incomeRow.appendChild(this.boostChip);
     this.cash = new RollingValue(formatBalance, this.cashPill.querySelector('.val') as HTMLElement, this.cashPill, 196);
     this.pearls = new RollingValue(formatPearls, this.pearlPill.querySelector('.val') as HTMLElement, this.pearlPill, 112);
   }
@@ -134,6 +145,18 @@ export class CashPart {
       this.pearlPill.classList.toggle('hud-hide', !showPearls);
       if (showPearls) replay(this.pearlPill, 'fx-pop');
     }
+  }
+
+  /** The 2× Cash Boost chip: seconds left (0 hides it). The income chip turns gold while it runs. */
+  updateBoost(sec: number): void {
+    const txt = sec > 0 ? `2× ${fmtClock(Math.ceil(sec))}` : '';
+    if (txt === this.last.boost) return;
+    const was = this.last.boost !== '';
+    this.last.boost = txt;
+    this.boostChip.style.display = txt ? '' : 'none';
+    this.incomeRow.classList.toggle('boosted', !!txt);
+    if (txt) setText(this.boostTxt, txt);
+    if (txt && !was) replay(this.boostChip, 'fx-pop');
   }
 
   /** A coin landed: release part of the held amount (the roll continues from here). */

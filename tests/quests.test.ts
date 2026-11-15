@@ -1,10 +1,10 @@
 import { Vector3 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ECONOMY } from '../src/game/config';
 import type { SimEvent, WildCreature } from '../src/contracts';
 import { ManualClock } from '../src/game/clock';
 import { Progression, type ProgressEvent } from '../src/game/progression';
-import { VOYAGE, voyageRewardKey } from '../src/game/quests';
+import { DEEP_VOYAGE, VOYAGE, voyageRewardKey } from '../src/game/quests';
 import { GameSim } from '../src/game/sim';
 import { GameState } from '../src/game/state';
 
@@ -32,11 +32,14 @@ function wild(speciesId: string, golden = false, mutation = 0): WildCreature {
 }
 
 describe('First Voyage', () => {
-  it('has 12 quests with the §9.1 rewards', () => {
+  it('has 12 quests: §9.1 for 1-6, pacing proposal F1 for 7-12 (the lighthouse quest after Lagoon)', () => {
     expect(VOYAGE.length).toBe(12);
+    expect(VOYAGE.map((q) => q.text).slice(6)).toEqual([
+      'Reach Coral Reef', 'Fill 6 pedestals', 'Hatch an egg', 'Reach Lagoon', 'Ride out a wave on a lighthouse', 'Catch one after a Golden Wave',
+    ]);
     expect(VOYAGE.map((q) => q.reward)).toEqual([
       { cash: 20 }, { cash: 20 }, {}, { cash: 50 }, { cash: 40 }, { min: 2 },
-      { min: 2 }, { min: 2 }, { min: 3 }, { min: 3 }, { min: 5, pearls: 10 }, { min: 5, pearls: 25, cosmetic: 'rope_sailor' },
+      { min: 1 }, { min: 2 }, { min: 2 }, { min: 3, pearls: 10 }, { min: 1 }, { min: 5, pearls: 25, cosmetic: 'rope_sailor' },
     ]);
   });
 
@@ -45,7 +48,7 @@ describe('First Voyage', () => {
     send({ type: 'player', event: 'grab' });
     frame();
     expect(state.voyage.step).toBe(1);
-    expect(log).toContainEqual({ type: 'questDone', index: 1, reward: {} });
+    expect(log).toContainEqual({ type: 'questDone', index: 1, reward: {}, line: 'first' });
     expect(state.cash).toBe(0);
     expect(state.flags.landedIsland).toBeUndefined();
     send({ type: 'landed', solid: sim.course.islands[0].solid, islandOrder: 1 });
@@ -55,45 +58,73 @@ describe('First Voyage', () => {
   });
 
   it('after the FTUE, quests pay out and satisfied ones complete one per frame', () => {
-    const { state, log, frame, send, p } = setup(true);
+    const { state, log, frame, send, p, sim } = setup(true);
     state.voyage.step = 6;
     expect(p.tracker()).toEqual(expect.objectContaining({ title: 'FIRST VOYAGE', count: '7/12' }));
     state.bestZone = 1;
     frame();
     expect(state.voyage.step).toBe(7);
-    expect(state.cash).toBe(50); // 2 min with no income → the $50 floor
-    expect(log.find((e) => e.type === 'questDone')).toEqual({ type: 'questDone', index: 7, reward: { cash: 50 } });
+    expect(state.cash).toBe(50); // 1 min with no income → the $50 floor
+    expect(log.find((e) => e.type === 'questDone')).toEqual({ type: 'questDone', index: 7, reward: { cash: 50 }, line: 'first' });
     expect(log).toContainEqual({ type: 'rewardApplied', reward: { cash: 50 }, source: 'voyage:7' });
 
-    send({ type: 'padLaunch', padId: 1, inWave: true });
-    for (let i = 0; i < 4; i++) state.base[i] = { speciesId: 'toastopus', mutation: 0 };
-    state.levels.carry = 1;
+    for (let i = 0; i < 6; i++) state.base[i] = { speciesId: 'toastopus', mutation: 0 };
     frame();
+    expect(state.voyage.step).toBe(8);
+    // Hatch an egg: the Hatchery tile points the way.
+    expect(p.tracker()!.rows[0].text).toBe('Hatch an egg');
+    expect(p.railState(0).hatchery.arrow).toBe(true);
+    state.counters.eggsHatched = 1;
     frame();
+    expect(state.voyage.step).toBe(9);
+    expect(p.railState(0).hatchery.arrow).toBe(false);
+    expect(p.tracker()!.rows[0].text).toBe('Reach Lagoon');
+    expect(p.tracker()!.rows[0].reward.pearls).toBe(10);
+    state.bestZone = 2;
     frame();
     expect(state.voyage.step).toBe(10);
-    expect(p.tracker()!.rows[0].text).toBe('Catch a Rare');
-    expect(p.tracker()!.rows[0].reward.pearls).toBe(10);
+    expect(state.pearls).toBe(10);
 
-    send({ type: 'collect', creature: wild('banana_shark'), isNewSpecies: true, isNewMutation: true });
+    // The lighthouse quest: a wave ridden out on top of a lighthouse counts (no launch needed).
+    expect(p.tracker()!.rows[0].text).toBe('Ride out a wave on a lighthouse');
+    vi.spyOn(sim, 'safeSpot').mockReturnValue('lighthouse');
+    send({ type: 'surgeEnd', golden: false, big: false, number: 3, survived: true });
     frame();
     expect(state.voyage.step).toBe(11);
-    expect(state.pearls).toBe(5 + 10); // discovery + quest 11
-    expect(log).toContainEqual({ type: 'discovery', speciesId: 'banana_shark', pearls: 5 });
+    expect(state.counters.lighthouseWaves).toBe(1);
 
     send({ type: 'collect', creature: wild('toastopus', true), isNewSpecies: false, isNewMutation: false });
     frame();
     expect(state.voyage.step).toBe(12);
     expect(state.cosmetics.owned).toContain('rope_sailor');
-    expect(state.pearls).toBe(5 + 10 + 25);
+    expect(state.pearls).toBe(10 + 25);
     expect(log).toContainEqual({ type: 'voyageDone' });
     expect(log).toContainEqual({ type: 'unlock', what: 'locker' });
-    // The Voyage is over; the tracker keeps showing the next zone to unlock.
-    expect(p.tracker()).toEqual(expect.objectContaining({ title: 'NEXT GOAL' }));
-    expect(p.tracker()!.rows).toHaveLength(1);
-    expect(p.tracker()!.rows[0].text).toMatch(/Unlock |Buy Rope Reach/);
+    // The Deep Voyage follows, with the next-zone goal under it.
+    expect(p.tracker()).toEqual(expect.objectContaining({ title: 'DEEP VOYAGE', count: '1/10' }));
+    expect(p.tracker()!.rows).toHaveLength(2);
+    expect(p.tracker()!.rows[1].text).toMatch(/Unlock |Buy Rope Reach/);
     frame();
     expect(state.voyage.step).toBe(12);
+    expect(state.voyage.deep).toBe(0);
+  });
+
+  it('the Deep Voyage pays one quest per frame and ends with the next-zone goal only', () => {
+    const { state, log, frame, p } = setup(true);
+    state.voyage.step = 12;
+    state.base[0] = { speciesId: 'crab_dj', mutation: 0 };
+    state.buddy = { speciesId: 'crab_dj', mutation: 0 };
+    frame();
+    expect(state.voyage.deep).toBe(1);
+    expect(log).toContainEqual(expect.objectContaining({ type: 'questDone', index: 1, line: 'deep' }));
+    expect(p.tracker()).toEqual(expect.objectContaining({ title: 'DEEP VOYAGE', count: '2/10' }));
+    state.voyage.deep = DEEP_VOYAGE.length - 1;
+    state.bestZone = 4;
+    frame();
+    expect(state.voyage.deep).toBe(DEEP_VOYAGE.length);
+    expect(log).toContainEqual({ type: 'deepDone' });
+    expect(state.tokens.luckyTide).toBe(1);
+    expect(p.tracker()).toEqual(expect.objectContaining({ title: 'NEXT GOAL' }));
   });
 
   it('a skipped FTUE pays a quest 1–6 reward only if it was not paid yet', () => {
@@ -204,16 +235,17 @@ describe('Progression facade', () => {
     state.base[0] = { speciesId: 'crab_dj', mutation: 0 }; // $3/s
     state.savedAt = T0 - 600_000;
     state.lastSeen = T0 - 600_000;
-    state.gifts = { day: '2026-11-05', activeSec: 0, claimed: [], pending: [2] };
+    state.gifts = { day: '2026-11-05', activeSec: 0, claimed: [], pending: [6] };
     const p = new Progression(state, new ManualClock(T0));
     expect(p.shouldShowWelcome()).toBe(true);
     const w = p.welcome();
     expect(w.offline).toBeCloseTo(1800 * ECONOMY.offlineRate);
     expect(w.daily?.day).toBe(1);
-    expect(w.pendingGifts).toEqual([{ pearls: 10 }]);
+    expect(w.pendingGifts).toEqual([{ cash: 5 * 60 * 3, pearls: 10 }]); // gift 6: 5 min + 10 Pearls
     expect(w.canDouble).toBe(true);
     const r = p.collectWelcome(true);
-    expect(r.cash).toBeCloseTo(2 * 1800 * ECONOMY.offlineRate + Math.round(3 * 60 * 3));
+    // The Daily is claimed first (streak 0 → 1), so the gift's 5 min include the +1% streak bonus.
+    expect(r.cash).toBeCloseTo(2 * 1800 * ECONOMY.offlineRate + Math.round(3 * 60 * 3) + Math.round(5 * 60 * 3 * 1.01));
     expect(r.pearls).toBe(20);
     expect(p.offline).toBe(0);
     expect(p.shouldShowWelcome()).toBe(false);

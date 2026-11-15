@@ -25,11 +25,13 @@ function setup() {
 }
 
 describe('playtime gifts', () => {
-  it('unlock by active minutes and match §9.3', () => {
-    expect(GIFTS.map((g) => g.atMin)).toEqual([1, 3, 5, 7, 10, 13, 16, 20]);
-    expect(GIFTS[2].spec).toEqual({ pearls: 10 });
+  it('unlock by active minutes and follow pacing proposal F1', () => {
+    // docs/research/r2-pacing.md: small and frequent early, Lucky Tide at 8, Mystery Creature at 10; 8 gifts (strip).
+    expect(GIFTS.map((g) => g.atMin)).toEqual([1, 2.5, 4, 5.5, 8, 10, 12.5, 20]);
+    expect(GIFTS[1].spec).toEqual({ boostMin: 3 }); // teaches the 2× Cash Boost
     expect(GIFTS[4].spec).toEqual({ luckyTide: 1 });
-    expect(GIFTS[7].spec).toEqual({ mystery: true });
+    expect(GIFTS[5].spec).toEqual({ mystery: true });
+    expect(GIFTS[7].spec).toEqual({ mystery: true, pearls: 25 });
     const { state, events, tick } = setup();
     tick(59);
     expect(readyGifts(state.gifts)).toEqual([]);
@@ -44,12 +46,12 @@ describe('playtime gifts', () => {
     const { state, p, tick } = setup();
     tick(5 * 60);
     expect(readyGifts(state.gifts)).toEqual([0, 1, 2]);
-    expect(p.claimGift(1)).toEqual({ cash: 50 });
-    expect(p.claimGift(1)).toBeNull();
+    expect(p.claimGift(2)).toEqual({ cash: 50 });
+    expect(p.claimGift(2)).toBeNull();
     expect(p.claimGift(4)).toBeNull();
     const all = p.claimGift('all')!;
-    expect(all.pearls).toBe(10);
-    expect(state.pearls).toBe(10);
+    expect(all.boost2xSec).toBe(180);
+    expect(state.tokens.boost2xSec).toBe(180);
     expect(state.counters.giftsClaimed).toBe(3);
     expect(p.free().gifts.gifts.map((g) => g.state).slice(0, 4)).toEqual(['claimed', 'claimed', 'claimed', 'locked']);
   });
@@ -68,7 +70,7 @@ describe('playtime gifts', () => {
     const w = p.welcome();
     expect(w.pendingGifts.length).toBe(2);
     const r = p.claimPendingGifts()!;
-    expect(r.pearls).toBe(10);
+    expect(r.boost2xSec).toBe(180);
     expect(state.gifts.pending).toEqual([]);
   });
 

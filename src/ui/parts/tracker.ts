@@ -9,6 +9,7 @@ export function rewardChip(r: Reward, size = 16): string {
   if (r.cash) parts.push(`${icon('cash', size)}<span>${formatCash(r.cash)}</span>`);
   if (r.pearls) parts.push(`${icon('pearl', size)}<span>${formatPearls(r.pearls)}</span>`);
   if (r.luckyTide) parts.push(`${icon('lucky-tide', size)}<span>${r.luckyTide > 1 ? r.luckyTide : ''}</span>`);
+  if (r.boost2xSec) parts.push(`${icon('boost', size + 2)}<span>${Math.round(r.boost2xSec / 60)}m</span>`);
   if (r.creature) parts.push(`${icon('creature', size)}`);
   if (r.cosmetic) parts.push(`${icon('locker', size)}`);
   return parts.join('');

@@ -2,19 +2,29 @@ import { dayKey, formatClock, hashKey, msUntilNextDay, systemClock, weekKey, typ
 import { buyCosmetic, equipCosmetic, lockerItems, markCosmeticSeen } from './cosmetics';
 import { RARITIES, SPECIES } from './creatures';
 import { WEEKLY_ROPES, claimedToday, dailyClaimable, dailySpec, nextDailyDay, recordDailyClaim } from './daily';
-import { cheapestUpgradeCost, formatCash, offlineEarnings, reachGateLevel, rebirthCost } from './economy';
+import { BOOST, cheapestUpgradeCost, formatCash, offlineEarnings, reachGateLevel, rebirthCost } from './economy';
 import { featuredSpeciesFor } from './featured';
-import { GIFTS, giftState, readyGifts, rolloverGifts, secondsToNextGift } from './gifts';
+import { GIFTS, giftState, nextGiftIndex, readyGifts, rolloverGifts, secondsToNextGift } from './gifts';
+import { eggCost, eggUnlocked } from './hatchery';
+import {
+  MISSION_BONUS, MISSION_REWARDS, ensureMissions, missionBonusClaimable, missionClaimable, missionIcon, missionProgress,
+  missionText, missionsClaimableCount, rerollMission,
+} from './missions';
 import { rollStatsDay, trackSimEvent } from './progress';
-import { VOYAGE_LENGTH, currentQuest, voyageDone, voyageRewardKey } from './quests';
+import {
+  DEEP_LENGTH, VOYAGE_LENGTH, activeQuest, currentQuest, questLineTitle, voyageDone, voyageRewardKey, type QuestLine,
+} from './quests';
 import { DISCOVERY_PEARLS, applyReward, isEmptyReward, mergeRewards, resolveReward, type RewardSpec } from './rewards';
 import { Rng } from './rng';
 import { REBIRTH_VISIBLE_AT } from './shopView';
 import { FTUE_STEPS, type GameState } from './state';
 import { ZONES } from './zones';
 import type {
+  BoostView,
   DailyTile,
   FreeView,
+  IconId,
+  MissionsView,
   IndexEntry,
   IndexView,
   LockerView,
@@ -30,7 +40,10 @@ import type {
 import type { GameSim } from './sim';
 
 export type ProgressEvent =
-  | { type: 'questDone'; index: number; reward: Reward }
+  | { type: 'questDone'; index: number; reward: Reward; line?: QuestLine }
+  | { type: 'deepDone' }
+  | { type: 'missionDone'; index: number; text: string }
+  | { type: 'boostEnd' }
   | { type: 'voyageDone' }
   | { type: 'giftReady'; index: number }
   | { type: 'dailyReady' }
@@ -45,6 +58,8 @@ export const ROLLBACK_GUARD_MS = 5 * 60 * 1000;
 export interface ProgressionContext {
   /** Visible and the last input was within 120 s (the lead decides). */
   active: boolean;
+  /** Active and not paused (no panel, ad or resume card): the 2× Cash Boost counts down. Default: active. */
+  playing?: boolean;
   sim: GameSim;
   ftueDone: boolean;
 }
@@ -63,6 +78,8 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
 
   private readonly pending: ProgressEvent[] = [];
   private readonly giftsNotified = new Set<number>();
+  /** Missions already announced as done ("day:index:tpl"). */
+  private readonly missionsNotified = new Set<string>();
   private dailyWasClaimable: boolean;
   private ftueDoneSeen: boolean;
   private shopUnlocked: boolean;
@@ -94,6 +111,8 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     this.shopUnlocked = this.shopVisible();
     this.lockerUnlocked = voyageDone(state);
     if (state.cash >= rebirthCost(state.rebirths) * REBIRTH_VISIBLE_AT) state.flags['unlock:rebirth'] = true;
+    if (!this.rollbackBlocked && state.ftue.done) ensureMissions(state, today);
+    this.noteMissions(false);
   }
 
   private get today(): string {
@@ -115,7 +134,12 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
   // ---------- sim events ----------
 
   /** Updates stats and event flags. Quest checks and events happen in update(). */
-  onSimEvent(e: SimEvent, _sim: GameSim): void {
+  onSimEvent(e: SimEvent, sim: GameSim): void {
+    // A wave ridden out on top of a lighthouse (First Voyage 11, missions): needs the player's spot, so it is here.
+    if (e.type === 'surgeEnd' && e.survived && sim.safeSpot() === 'lighthouse') {
+      this.state.counters.lighthouseWaves++;
+      if (e.golden) this.state.counters.goldenOnLighthouse++;
+    }
     const discovered = trackSimEvent(this.state, e, this.today);
     if (discovered) {
       this.state.pearls += DISCOVERY_PEARLS;
@@ -151,6 +175,16 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
       }
     }
     if (ctx.active) state.counters.playSec += realDt;
+    // 2× Cash Boost: counts down only while playing (not paused, hidden, idle or offline).
+    if ((ctx.playing ?? ctx.active) && state.tokens.boost2xSec > 0) {
+      state.tokens.boost2xSec = Math.max(0, state.tokens.boost2xSec - realDt);
+      if (state.tokens.boost2xSec === 0) this.events.push({ type: 'boostEnd' });
+    }
+    // Daily Missions: a new set each local day, from the end of the tutorial.
+    if (!this.rollbackBlocked && this.ftueDone) {
+      if (ensureMissions(state, today)) this.missionsNotified.clear();
+      this.noteMissions(true);
+    }
 
     const claimable = this.dailyClaimable();
     if (claimable && !this.dailyWasClaimable) this.events.push({ type: 'dailyReady' });
@@ -172,6 +206,22 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
   }
 
   private checkQuest(): void {
+    if (currentQuest(this.state)) this.checkFirstVoyage();
+    else if (this.ftueDone) this.checkDeepVoyage();
+  }
+
+  /** Deep Voyage: one quest per frame, like the First Voyage (rewards always paid by Progression). */
+  private checkDeepVoyage(): void {
+    const state = this.state;
+    const a = activeQuest(state);
+    if (!a || a.line !== 'deep' || !a.q.done(state)) return;
+    const reward = this.grant(a.q.reward, `deep:${a.q.n}`, `deep:${a.q.n}`);
+    state.voyage.deep = (state.voyage.deep ?? 0) + 1;
+    this.events.push({ type: 'questDone', index: a.q.n, reward, line: 'deep' });
+    if (state.voyage.deep >= DEEP_LENGTH) this.events.push({ type: 'deepDone' });
+  }
+
+  private checkFirstVoyage(): void {
     const state = this.state;
     const q = currentQuest(state);
     if (!q || !q.done(state)) return;
@@ -184,7 +234,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
       state.ftue.rewarded.push(key);
     }
     state.voyage.step++;
-    this.events.push({ type: 'questDone', index: q.n, reward });
+    this.events.push({ type: 'questDone', index: q.n, reward, line: 'first' });
     if (state.voyage.step >= VOYAGE_LENGTH) this.events.push({ type: 'voyageDone' });
   }
 
@@ -393,6 +443,90 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     return true;
   }
 
+  // ---------- Daily Missions ----------
+
+  /** Announces missions that became done (once each). `announce` false only marks them (load). */
+  private noteMissions(announce: boolean): void {
+    const ms = this.state.missions;
+    ms.list.forEach((m, i) => {
+      const key = `${ms.day}:${i}:${m.tpl}`;
+      if (this.missionsNotified.has(key) || m.claimed || !missionProgress(this.state, m).done) return;
+      this.missionsNotified.add(key);
+      if (announce) this.events.push({ type: 'missionDone', index: i, text: missionText(m) });
+    });
+  }
+
+  private missionsUnlocked(): boolean {
+    return this.ftueDone && !this.rollbackBlocked && this.state.missions.list.length > 0;
+  }
+
+  /** CLAIM on a finished mission, or on the bonus chest once all three are claimed. Null when not claimable. */
+  claimMission(i: number | 'bonus'): Reward | null {
+    if (!this.missionsUnlocked()) return null;
+    const ms = this.state.missions;
+    if (i === 'bonus') {
+      if (!missionBonusClaimable(this.state)) return null;
+      ms.bonusClaimed = true;
+      return this.grant(MISSION_BONUS, `missionBonus:${ms.day}`, 'missionBonus');
+    }
+    if (!missionClaimable(this.state, i)) return null;
+    const m = ms.list[i];
+    m.claimed = true;
+    return this.grant(MISSION_REWARDS[m.tier], `mission:${ms.day}:${i}`, `mission:${m.tier}`);
+  }
+
+  /** The free daily reroll of one mission. */
+  rerollMission(i: number): boolean {
+    if (!this.missionsUnlocked()) return false;
+    return rerollMission(this.state, i, `reroll:${this.state.missions.day}:${i}`);
+  }
+
+  private missionsView(): MissionsView {
+    const state = this.state;
+    const ms = state.missions;
+    const unlocked = this.missionsUnlocked();
+    const rng = (k: string) => new Rng(hashKey(k));
+    return {
+      unlocked,
+      rows: unlocked
+        ? ms.list.map((m, i) => {
+            const p = missionProgress(state, m);
+            return {
+              text: missionText(m), icon: missionIcon(m), tier: m.tier, value: p.value, target: p.target, progress: p.frac,
+              reward: resolveReward(state, MISSION_REWARDS[m.tier], rng(`mission:${ms.day}:${i}`)),
+              claimable: !m.claimed && p.done, claimed: m.claimed, canReroll: !m.claimed && !m.rerolled && !p.done,
+            };
+          })
+        : [],
+      bonus: {
+        reward: resolveReward(state, MISSION_BONUS, rng(`missionBonus:${ms.day}`)),
+        claimable: unlocked && missionBonusClaimable(state),
+        claimed: ms.bonusClaimed,
+      },
+      resetIn: Math.ceil(msUntilNextDay(this.clock.now()) / 1000),
+    };
+  }
+
+  // ---------- 2× Cash Boost ----------
+
+  /** A rewarded ad can add BOOST.adSec while the stored boost stays under the cap (the lead also needs the SDK). */
+  canAdBoost(): boolean {
+    return this.ftueDone && this.state.tokens.boost2xSec + BOOST.adSec <= BOOST.capSec;
+  }
+
+  /** After a rewarded ad: +BOOST.adSec of 2× cash (capped at BOOST.capSec stored). Returns the seconds added. */
+  addAdBoost(): number {
+    if (!this.ftueDone) return 0;
+    const t = this.state.tokens;
+    const add = Math.max(0, Math.min(BOOST.adSec, BOOST.capSec - t.boost2xSec));
+    t.boost2xSec += add;
+    return add;
+  }
+
+  private boostView(): BoostView {
+    return { sec: this.state.tokens.boost2xSec, canAd: this.canAdBoost(), adSec: BOOST.adSec, capSec: BOOST.capSec };
+  }
+
   // ---------- Hints (HudDeps.coach is backed by hintsSeen) ----------
 
   hintSeen(id: string): boolean {
@@ -410,8 +544,16 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     const ftueDone = this.ftueDone;
     const shopVisible = this.shopVisible();
     const affordable = shopVisible && cash >= cheapestUpgradeCost(state.levels);
-    const freeCount = this.rollbackBlocked ? 0 : readyGifts(state.gifts).length + (this.dailyClaimable() ? 1 : 0);
+    const freeCount = this.rollbackBlocked
+      ? 0
+      : readyGifts(state.gifts).length + (this.dailyClaimable() ? 1 : 0) + (ftueDone ? missionsClaimableCount(state) : 0);
     const nextGift = this.rollbackBlocked ? null : secondsToNextGift(state.gifts);
+    const nextIdx = this.rollbackBlocked ? null : nextGiftIndex(state.gifts);
+    // The current quest asks for an egg or a Buddy (F1): the Hatchery tile points the way.
+    const aq = ftueDone ? activeQuest(state) : null;
+    const hatchQuest = !!aq && (aq.q.buy === 'egg' || aq.q.buy === 'buddy') && !aq.q.done(state);
+    const hatchReady =
+      !!aq && hatchQuest && (aq.q.buy === 'buddy' ? state.base.some((c) => c !== null) : this.questEggAffordable(aq.q.eggZone ?? 0));
     const indexNew = this.newSpecies().length;
     const rCost = rebirthCost(state.rebirths);
     // Once unlocked the tile stays (spec: tiles "appear when they unlock"), so spending cash never hides it again.
@@ -428,6 +570,7 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
     // One wiggle: FREE claimable > Shop affordable (at home) > Index NEW.
     let wiggle: RailId | null = null;
     if (ftueDone && freeCount > 0) wiggle = 'free';
+    else if (hatchReady) wiggle = 'hatchery';
     else if (affordable && atHome) wiggle = 'shop';
     else if (ftueDone && indexNew > 0) wiggle = 'index';
 
@@ -440,23 +583,49 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
         wiggle: wiggle === 'free',
         label: 'FREE',
         timer: freeCount === 0 && nextGift !== null ? formatClock(nextGift) : undefined,
+        prize: freeCount === 0 && nextIdx !== null ? this.giftPrize(nextIdx) : undefined,
       },
       index: { visible: ftueDone, badge: badges.index ?? null, arrow: false, wiggle: wiggle === 'index' },
       rebirth: { visible: rebirthVisible, badge: badges.rebirth ?? null, arrow: false, wiggle: false },
-      hatchery: { visible: ftueDone, badge: null, arrow: false, wiggle: false },
+      hatchery: { visible: ftueDone, badge: null, arrow: hatchQuest, wiggle: wiggle === 'hatchery' },
     };
   }
 
-  /** First Voyage tracker (C16): the current quest; null during the FTUE and after the Voyage. */
+  /** An egg the current quest accepts (zone >= minZone) is unlocked and affordable. */
+  private questEggAffordable(minZone: number): boolean {
+    const s = this.state;
+    for (let z = Math.max(0, minZone); z <= Math.max(0, s.bestZone); z++) if (eggUnlocked(s, z) && s.cash >= eggCost(s, z)) return true;
+    return false;
+  }
+
+  /** The prize of playtime gift i for the FREE tile ("what am I waiting for"). */
+  giftPrize(i: number): { icon: IconId; text: string } | undefined {
+    const gift = GIFTS[i];
+    if (!gift) return undefined;
+    const sp = gift.spec;
+    if (sp.mystery) return { icon: 'creature', text: 'CREATURE' };
+    if (sp.luckyTide) return { icon: 'lucky-tide', text: 'LUCKY TIDE' };
+    if (sp.boostMin) return { icon: 'boost', text: `2× ${sp.boostMin} MIN` };
+    if (sp.min) return { icon: 'cash', text: formatCash(resolveReward(this.state, sp, new Rng(0)).cash ?? 0) };
+    if (sp.pearls) return { icon: 'pearl', text: `${sp.pearls}` };
+    return undefined;
+  }
+
+  /**
+   * Quest tracker (C16): the First Voyage, then the Deep Voyage, with the next-zone goal row under the quest; only
+   * the goal after both lines; null during the FTUE.
+   */
   tracker(): TrackerView | null {
     if (!this.ftueDone) return null;
-    const q = currentQuest(this.state);
+    const a = activeQuest(this.state);
     const goal = this.nextZoneGoal();
-    if (!q) return goal ? { title: 'NEXT GOAL', count: '', rows: [goal] } : null;
-    const reward = q.ftue && this.state.ftue.rewarded.includes(voyageRewardKey(q.n)) ? {} : resolveReward(this.state, q.reward, new Rng(0));
+    if (!a) return goal ? { title: 'NEXT GOAL', count: '', rows: [goal] } : null;
+    const q = a.q;
+    const paid = a.line === 'first' && q.ftue && this.state.ftue.rewarded.includes(voyageRewardKey(q.n));
+    const reward = paid ? {} : resolveReward(this.state, q.reward, new Rng(0));
     const rows: TrackerRow[] = [{ icon: q.icon, text: q.text, progress: q.progress(this.state), reward, done: false }];
     if (goal) rows.push(goal);
-    return { title: 'FIRST VOYAGE', count: `${q.n}/${VOYAGE_LENGTH}`, rows };
+    return { title: questLineTitle(a.line), count: `${q.n}/${a.line === 'deep' ? DEEP_LENGTH : VOYAGE_LENGTH}`, rows };
   }
 
   /**
@@ -497,8 +666,11 @@ export class Progression implements Pick<PanelData, 'free' | 'locker' | 'index'>
       },
       luckyTide: state.tokens.luckyTide,
       streak: state.daily.streak,
+      missions: this.missionsView(),
+      boost: this.boostView(),
     };
   }
+
 
   locker(): LockerView {
     return { pearls: this.state.pearls, items: lockerItems(this.state) };

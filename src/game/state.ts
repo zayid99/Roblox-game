@@ -1,6 +1,7 @@
 import { ECONOMY } from './config';
-import { creatureIncome, hasSpecies, type CreatureRef } from './creatures';
+import { creatureIncome, getSpecies, hasSpecies, type CreatureRef } from './creatures';
 import { GIFTS } from './gifts';
+import { DEEP_LENGTH, VOYAGE_LENGTH } from './quests';
 import { ZONES } from './zones';
 import {
   UPGRADES,
@@ -9,8 +10,11 @@ import {
   bulkCost,
   carryCapacity,
   emptyLevels,
+  formatCash,
+  formatIncome,
   maxAffordable,
   playerStats,
+  BOOST,
   REBIRTH,
   rebirthCost,
   rebirthMultiplier,
@@ -38,6 +42,12 @@ export interface Stats {
   mutatedCollects: number; goldenBatchCollects: number; cashEarned: number; upgradesBought: number;
   seaFalls: number; splashes: number; bounces: number; giftsClaimed: number; playSec: number;
   eggsHatched: number;
+  /** Waves ridden out on top of a lighthouse (First Voyage 11, missions), and those that were Golden. */
+  lighthouseWaves: number; goldenOnLighthouse: number;
+  /** Big Waves survived (Deep Voyage). */
+  bigWavesSurvived: number;
+  /** Best zone of an egg hatched, + 1 (0 = none yet). */
+  bestEggZone: number;
 }
 export type StatKey = { [K in keyof Stats]: Stats[K] extends number ? K : never }[keyof Stats];
 
@@ -49,6 +59,7 @@ export function emptyStats(): Stats {
     mutatedCollects: 0, goldenBatchCollects: 0, cashEarned: 0, upgradesBought: 0,
     seaFalls: 0, splashes: 0, bounces: 0, giftsClaimed: 0, playSec: 0,
     eggsHatched: 0,
+    lighthouseWaves: 0, goldenOnLighthouse: 0, bigWavesSurvived: 0, bestEggZone: 0,
   };
 }
 
@@ -73,7 +84,8 @@ export interface SaveDataV2 {
   pearls: number;
   settings: Settings;
   ftue: FtueSave;
-  voyage: { step: number };
+  /** step: First Voyage quests done (0..12); deep: Deep Voyage quests done (missing in older saves = 0). */
+  voyage: { step: number; deep?: number };
   missions: MissionsSave;
   daily: DailySave;
   gifts: GiftsSave;
@@ -105,6 +117,26 @@ export interface DeliveryResult {
   placed: CreatureRef[];
   /** Creatures sold for cash. `displaced`: a base creature pushed off its pedestal by a better one (not part of the delivery). */
   sold: { creature: CreatureRef; cash: number; displaced?: boolean }[];
+}
+
+/**
+ * The delivery toast (docs/research/r1-first-10-min.md F8): the income gained leads, as an upgrade when a creature
+ * replaced a weaker one ("+$2.1/s (replaced Toastopus)"); sales are the small print. `mult` = rebirth × streak.
+ * `soldExtra`: creatures sold because they did not beat anything on the base (the base is full).
+ */
+export function deliveryMessage(r: DeliveryResult, mult: number): { text: string; good: boolean; soldExtra: number } | null {
+  const displaced = r.sold.filter((x) => x.displaced);
+  const extra = r.sold.filter((x) => !x.displaced);
+  const extraCash = extra.reduce((a, x) => a + x.cash, 0);
+  const gain = (r.placed.reduce((a, c) => a + creatureIncome(c), 0) - displaced.reduce((a, x) => a + creatureIncome(x.creature), 0)) * mult;
+  const name = (c: CreatureRef) => getSpecies(c.speciesId).name;
+  const soldText = extra.length === 1 ? `sold ${name(extra[0].creature)} for ${formatCash(extraCash)}` : `sold ${extra.length} for ${formatCash(extraCash)}`;
+  if (gain > 0) {
+    const what = displaced.length === 1 ? ` (replaced ${name(displaced[0].creature)})` : displaced.length > 1 ? ` (replaced ${displaced.length})` : ' added';
+    return { text: `+${formatIncome(gain)}${what}${extra.length ? ` · ${soldText}` : ''}`, good: true, soldExtra: extra.length };
+  }
+  if (extra.length) return { text: `Base full: ${soldText}`, good: false, soldExtra: extra.length };
+  return null;
 }
 
 export const DEFAULT_ROPE = 'rope_hemp';
@@ -152,6 +184,25 @@ function sanitizeSettings(raw: unknown, base: Settings): Settings {
   return out;
 }
 
+const TIERS = ['easy', 'medium', 'hard'] as const;
+/** Missions from a save: malformed entries are dropped (missions.ts regenerates a day with a broken list). */
+function sanitizeMissions(raw: unknown): MissionInstance[] {
+  if (!Array.isArray(raw)) return [];
+  const stats = emptyStats() as unknown as Rec;
+  const out: MissionInstance[] = [];
+  for (const x of raw) {
+    if (!isObj(x) || typeof x.tpl !== 'string' || !TIERS.includes(x.tier as MissionInstance['tier'])) continue;
+    if (typeof x.stat !== 'string' || typeof stats[x.stat] !== 'number') continue;
+    const mi: MissionInstance = {
+      tpl: x.tpl, tier: x.tier as MissionInstance['tier'], target: Math.max(1, num(x.target, 1)), stat: x.stat as StatKey,
+      start: num(x.start, 0), claimed: bool(x.claimed, false), rerolled: bool(x.rerolled, false),
+    };
+    if (typeof x.param === 'number' && Number.isFinite(x.param)) mi.param = x.param;
+    out.push(mi);
+  }
+  return out;
+}
+
 function sanitizeStats(raw: unknown): Stats {
   const s = emptyStats();
   if (!isObj(raw)) return s;
@@ -191,7 +242,7 @@ export function migrateV1(raw: object): SaveDataV2 {
     pearls: 0,
     settings,
     ftue: { step: done ? 'ready' : 'grab', done, skipped: false, rewarded: [] },
-    voyage: { step: done ? 6 : 0 },
+    voyage: { step: done ? 6 : 0, deep: 0 },
     missions: { day: '', list: [], bonusClaimed: false },
     daily: defaultDaily(),
     gifts: defaultGifts(),
@@ -221,7 +272,7 @@ export class GameState {
 
   pearls = 0;
   ftue: FtueSave = defaultFtue();
-  voyage = { step: 0 };
+  voyage = { step: 0, deep: 0 };
   missions: MissionsSave = { day: '', list: [], bonusClaimed: false };
   daily: DailySave = defaultDaily();
   gifts: GiftsSave = defaultGifts();
@@ -273,9 +324,14 @@ export class GameState {
     return total * this.multiplier * this.streakBonus;
   }
 
-  /** baseIncomePerSec × boost factor (always 1 in v2.0). */
+  /** 2× while a Cash Boost runs (tokens.boost2xSec > 0), else 1. Progression counts the boost down while playing. */
+  boostFactor(): number {
+    return this.tokens.boost2xSec > 0 ? BOOST.factor : 1;
+  }
+
+  /** baseIncomePerSec × boost factor (offline earnings and "N min" rewards use the base income). */
   incomePerSec(): number {
-    return this.baseIncomePerSec();
+    return this.baseIncomePerSec() * this.boostFactor();
   }
 
   earn(amount: number): void {
@@ -535,9 +591,10 @@ export class GameState {
       skipped: bool(f.skipped, false),
       rewarded: strArr(f.rewarded),
     };
-    this.voyage = { step: Math.min(12, int(isObj(d.voyage) ? d.voyage.step : 0, 0)) };
+    const vy = isObj(d.voyage) ? d.voyage : {};
+    this.voyage = { step: Math.min(VOYAGE_LENGTH, int(vy.step, 0)), deep: Math.min(DEEP_LENGTH, int(vy.deep, 0)) };
     const m = isObj(d.missions) ? d.missions : {};
-    this.missions = { day: str(m.day, ''), list: Array.isArray(m.list) ? (m.list as MissionInstance[]) : [], bonusClaimed: bool(m.bonusClaimed, false) };
+    this.missions = { day: str(m.day, ''), list: sanitizeMissions(m.list), bonusClaimed: bool(m.bonusClaimed, false) };
 
     const dl = isObj(d.daily) ? d.daily : {};
     this.daily = {

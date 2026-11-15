@@ -1,0 +1,69 @@
+/* Economy UI: 2× Cash Boost chip, the FREE tile's next-gift prize, the FREE panel's boost header and MISSIONS tab. */
+
+/* ---- 2× Cash Boost chip (C4: "2× 8:12" after the income chip) ---- */
+.income-chip .chip.boost-chip { pointer-events: auto; cursor: pointer; height: 28px; padding: 0 10px; border: 3px solid var(--ink); color: var(--ink); font-size: 16px; box-shadow: 0 2px 0 var(--ink); }
+.income-chip .chip.boost-chip .ic { width: 26px; height: 26px; margin: -4px 0; color: inherit; }
+.income-chip .chip.boost-chip:active { transform: translateY(2px); box-shadow: none; }
+.income-chip.boosted > .chip:first-child { color: var(--sun); box-shadow: 0 0 0 2px var(--sun); }
+.income-chip.boosted > .chip:first-child .ic { color: var(--sun); }
+@media (max-width: 900px) {
+  /* Phones in landscape hide the income chip; the boost chip still shows while a boost runs. */
+  [data-layout="landscape"] .tl .income-chip.boosted { display: flex; }
+  [data-layout="landscape"] .tl .income-chip.boosted > .chip:not(.boost-chip) { display: none; }
+}
+
+/* ---- FREE tile: the next gift's prize next to its countdown ---- */
+.tile .tile-prize { position: absolute; left: calc(100% + 4px); top: 50%; translate: 0 -50%; display: flex; align-items: center; gap: 2px; height: 26px; padding: 0 8px 0 2px; border-radius: 999px; background: var(--ink); border: 2px solid rgba(255, 255, 255, .25); font: 400 13px/1 var(--display); color: #fff; white-space: nowrap; pointer-events: none; }
+.tile .tile-prize .ic { width: 24px; height: 24px; margin: -3px 0; }
+.tile .tile-prize .tp-t { color: var(--sun); }
+[data-layout="landscape"] .tile .tile-prize { left: 50%; top: calc(100% + 14px); translate: -50% 0; height: 22px; font-size: 12px; }
+[data-layout="landscape"] .tile .tile-prize .ic { width: 20px; height: 20px; }
+[data-layout="portrait"] .tile .tile-prize .tp-t { display: none; }
+[data-layout="portrait"] .tile .tile-prize { padding: 0 2px; }
+
+/* ---- FREE panel header: boost ---- */
+.fr-boost { display: flex; align-items: center; gap: 8px; margin-right: 10px; }
+.fr-boost .chip { height: 36px; padding: 0 12px 0 2px; gap: 2px; }
+.fr-boost .chip .t-stroke { font-size: 18px; color: #fff; }
+.fr-boost-ad { gap: 4px; padding: 0 12px 0 8px; }
+
+/* ---- MISSIONS tab ---- */
+.ms-list { display: flex; flex-direction: column; gap: 10px; padding: 10px 6px 4px; max-width: 640px; margin: 0 auto; }
+.ms-row, .ms-bonus { position: relative; display: grid; grid-template-columns: 40px 1fr auto 88px; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 16px; box-shadow: inset 0 -4px 0 var(--card-shade), 0 3px 0 var(--ink); }
+.ms-bonus { grid-template-columns: 46px 1fr 88px; background: linear-gradient(180deg, #FFF6CF, #FFE59A); }
+.ms-row.st-claimed, .ms-bonus.st-claimed { opacity: .65; }
+.ms-ic { display: flex; align-items: center; justify-content: center; }
+.ms-mid { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ms-tier { font-size: 12px; letter-spacing: .04em; color: var(--sky); }
+.tier-medium .ms-tier { color: var(--grape); }
+.tier-hard .ms-tier { color: var(--coral); }
+.ms-tx { font: 600 16px/1.15 var(--body); color: var(--text-ink); }
+.ms-bar { position: relative; display: block; height: 16px; border-radius: 999px; background: #E5D3A8; border: 2px solid var(--ink); overflow: hidden; }
+.ms-bar i { position: absolute; inset: 0; background: var(--grass); transform-origin: left; transition: transform 300ms var(--ease-out); }
+.ms-bar b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 400; color: var(--text-ink); }
+.ms-rw { display: flex; align-items: center; gap: 3px; font-size: 15px; color: var(--text-ink); white-space: nowrap; }
+.ms-act { display: flex; align-items: center; justify-content: center; }
+.ms-claim { width: 84px; padding: 0; }
+.ms-reroll { width: 40px; padding: 0; background: var(--frame-lo); }
+[data-layout="portrait"] .ms-row { grid-template-columns: 34px 1fr 76px; grid-template-areas: 'ic mid act' 'ic rw act'; row-gap: 2px; }
+[data-layout="portrait"] .ms-row .ms-ic { grid-area: ic; }
+[data-layout="portrait"] .ms-row .ms-mid { grid-area: mid; }
+[data-layout="portrait"] .ms-row .ms-rw { grid-area: rw; }
+[data-layout="portrait"] .ms-row .ms-act { grid-area: act; }
+[data-layout="portrait"] .ms-bonus { grid-template-columns: 40px 1fr 76px; }
+[data-layout="portrait"] .ms-claim { width: 72px; }
+[data-layout="landscape"] .ms-list { gap: 6px; padding-top: 6px; }
+[data-layout="landscape"] .ms-row, [data-layout="landscape"] .ms-bonus { padding: 4px 8px; }
+[data-layout="landscape"] .ms-tier { display: none; }
+
+/* Portrait: three FREE tabs fit without their icons. */
+[data-layout="portrait"] .panel--free .tab .ic { display: none; }
+[data-layout="portrait"] .panel--free .tab { padding: 0 12px; }
+/* Landscape phones: the header shares the tab row, so it goes compact (the icons say "streak" and "2×"). */
+[data-layout="landscape"] .panel.panel--free .tabs { margin-right: 300px; }
+[data-layout="landscape"] .panel--free .fr-boost-ad .label { display: none; }
+[data-layout="landscape"] .panel--free .tab .ic { display: none; }
+[data-layout="landscape"] .panel--free .tab { padding: 0 12px; }
+[data-layout="landscape"] .panel--free .fr-ds, [data-layout="landscape"] .panel--free .bt-x { display: none; }
+[data-layout="landscape"] .panel--free .fr-boost { margin-right: 0; gap: 6px; }
+[data-layout="landscape"] .panel--free .panel-head { gap: 6px; }

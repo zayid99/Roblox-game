@@ -18,6 +18,8 @@ export interface RewardSpec {
   luckyTide?: number;
   mystery?: boolean;
   cosmetic?: string;
+  /** Minutes of 2× Cash Boost (stored in tokens.boost2xSec). */
+  boostMin?: number;
 }
 
 /** "N min" = max(50, round(N × 60 × baseIncomePerSec())). */
@@ -42,6 +44,7 @@ export function resolveReward(state: GameState, spec: RewardSpec, rng: Rng): Rew
   if (spec.luckyTide) r.luckyTide = spec.luckyTide;
   if (spec.mystery) r.creature = rollMysteryCreature(state, rng);
   if (spec.cosmetic) r.cosmetic = spec.cosmetic;
+  if (spec.boostMin) r.boost2xSec = Math.round(spec.boostMin * 60);
   return r;
 }
 
