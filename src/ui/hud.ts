@@ -140,6 +140,7 @@ export class Hud {
     this.cash = new CashPart();
     this.cash.cashPill.dataset.anchor = 'cash';
     this.cash.pearlPill.dataset.anchor = 'pearls';
+    this.cash.onBoostTap = () => this.openPanel('free', 'gifts'); // economy: 2× Cash Boost chip
     this.rail = new RailPart(this.ctx);
     this.wave = new WaveMeterPart();
     this.course = new CourseBarPart();
@@ -256,6 +257,7 @@ export class Hud {
     // The tracker first: a finished quest holds its reward before the pills read the new totals.
     this.tracker.update(v.tracker, surge, this.watcher.mode);
     this.cash.update(realDt, v.cash, v.income, v.multiplier, v.rebirths, v.pearls, reduce);
+    this.cash.updateBoost(v.boostSec ?? 0); // economy
     this.rail.update(v.rail, reduce, realDt, this.banners.busy);
     this.wave.update(v.wave, reduce);
     this.course.update(v.course);

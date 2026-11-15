@@ -1,5 +1,5 @@
 // C2 left rail: Shop, FREE, Index, Hatchery, Rebirth sticker tiles with badges, upgrade arrow and wiggle.
-import type { PanelKind, PanelTab, RailId, RailTileState } from '../../contracts';
+import type { IconId, PanelKind, PanelTab, RailId, RailTileState } from '../../contracts';
 import { el, pressable, replay, setText, uiSound } from '../dom';
 import { icon } from '../icons';
 import type { HudCtx } from '../types';
@@ -34,7 +34,9 @@ interface TileEls {
   label: HTMLElement;
   badge: HTMLElement | null;
   arrow: HTMLElement | null;
-  last: { visible: boolean | null; badge: string; arrow: boolean; label: string; wiggle: boolean };
+  /** FREE tile: the next playtime gift's prize (economy). */
+  prize: HTMLElement | null;
+  last: { visible: boolean | null; badge: string; arrow: boolean; label: string; wiggle: boolean; prize: string };
 }
 
 export class RailPart {
@@ -73,7 +75,8 @@ export class RailPart {
         label: b.querySelector('.tl') as HTMLElement,
         badge: null,
         arrow: null,
-        last: { visible: null, badge: '', arrow: false, label: t.label, wiggle: false },
+        prize: null,
+        last: { visible: null, badge: '', arrow: false, label: t.label, wiggle: false, prize: '' },
       });
     }
     this.el.appendChild(this.tip);
@@ -125,7 +128,8 @@ export class RailPart {
           setText(e.badge, badge);
         }
       }
-      const arrow = t.id === 'shop' && s.arrow;
+      // The Hatchery tile points the way while a quest asks for an egg or a Buddy (economy, F1).
+      const arrow = (t.id === 'shop' || t.id === 'hatchery') && s.arrow;
       if (arrow !== e.last.arrow) {
         e.last.arrow = arrow;
         if (arrow) {
@@ -134,6 +138,22 @@ export class RailPart {
         } else {
           e.arrow?.remove();
           e.arrow = null;
+        }
+      }
+      // Next gift's prize next to its countdown, so the player sees what they are waiting for (economy, r4 #2).
+      const prize = s.prize && !badge ? `${s.prize.icon}|${s.prize.text}` : '';
+      if (prize !== e.last.prize) {
+        e.last.prize = prize;
+        if (!prize) {
+          e.prize?.remove();
+          e.prize = null;
+        } else {
+          if (!e.prize) {
+            e.prize = el('span', 'tile-prize');
+            e.root.appendChild(e.prize);
+          }
+          const [id, text] = prize.split('|');
+          e.prize.innerHTML = `${icon(id as IconId, 22)}<span class="tp-t">${text}</span>`;
         }
       }
       const label = s.timer && !badge ? s.timer : (s.label ?? t.label);
