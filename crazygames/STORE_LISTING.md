@@ -24,9 +24,10 @@ Creatures you bring home sit on your pedestals and earn cash every second, even 
 - 7 zones with their own obstacles: swaying hooks, spring coral, crumbling stones and geysers
 - 35 creatures in 7 rarities, plus Gold, Diamond and Rainbow mutations to complete your Index
 - A wave every 70 seconds, with Golden Waves and Big Waves that change what washes up
+- Treasure bottles and surprise sea events: Rainbow Rain, Treasure Fleet, Calm Seas and Feeding Frenzy
 - Hatch eggs at the Hatchery and pick a Buddy pet that follows you and boosts your earnings
 - Rebirth to double your income and climb again faster
-- Daily rewards, free gifts and a First Voyage quest line
+- Daily rewards, daily missions, free gifts, and the First Voyage and Deep Voyage quest lines
 - Plays on desktop and mobile, with progress saved automatically
 
 ## How to play / Controls
@@ -63,8 +64,8 @@ Creatures you bring home sit on your pedestals and earn cash every second, even 
 | External links | None |
 | Age rating content | No violence, no blood, no gambling, no chat, no user-generated content |
 | Engine | Three.js (WebGL), TypeScript |
-| Download size | About 350 KB zipped, 1.2 MB unzipped, 3 files |
-| Loading | No external assets: fonts, art, music and sound are all generated in code |
+| Download size | About 660 KB zipped, 1.7 MB unzipped, 3 files plus a folder |
+| Loading | No external assets: fonts, music and sound are generated in code; icons are bundled inside the build |
 
 ## Files to upload
 
