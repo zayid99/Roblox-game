@@ -15,11 +15,10 @@ const DT = 1 / 120;
 describe('Bounce Buoys', () => {
   const course = generateCourse();
 
-  it('one buoy in every gap of zones 2–5, none in the Shallows', () => {
-    expect(course.buoys.length).toBe(12);
+  it('one buoy in every gap from the Coral Reef on (Volcano Bay and Secret Reef too), none in the Shallows', () => {
+    expect(course.buoys.length).toBe(18);
     for (const b of course.buoys) {
       expect(b.zone).toBeGreaterThanOrEqual(1);
-      expect(b.zone).toBeLessThanOrEqual(4);
       expect(b.radius).toBe(1.4);
       expect(b.pos.y).toBe(1.2);
       const gap = course.gaps.find((g) => g.zone === b.zone && b.pos.z < g.from.solid.min.z && b.pos.z > g.to.solid.max.z);
@@ -45,10 +44,10 @@ describe('Bounce Buoys', () => {
 });
 
 describe('Volcano geysers', () => {
-  it('three vents on Volcano Bay islands, cycling idle → warning → erupting', () => {
+  it('a vent on each Volcano Bay island without a lighthouse, cycling idle → warning → erupting', () => {
     const course = generateCourse();
     const volcano = ZONES.findIndex((z) => z.name === 'Volcano Bay');
-    expect(course.geysers.length).toBe(3);
+    expect(course.geysers.length).toBe(2); // not on the lighthouse island (the wave escape pad)
     for (const g of course.geysers) expect(g.zone).toBe(volcano);
     const g = { ...course.geysers[0], phase: 0 };
     expect(geyserStateAt(g, 1)).toBe('idle');

@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, PHYS, SEA_RESPAWN_DELAY } from './config';
+import { COMBO, ECONOMY, HOME_FRONT_Z, HOME_TOP, PHYS, SEA_RESPAWN_DELAY, WAVE } from './config';
 import { ComboTracker } from './combo';
 import { anchorPosAt, CRUMBLE, generateCourse, geyserStateAt, zoneAtZ, type Anchor, type Course, type GeyserState, type Island, type Pad, type Stone } from './course';
 import { playerOverlaps } from './physics';
@@ -54,6 +54,8 @@ export class GameSim {
   featuredSpecies: string | null = null;
   /** True once the player has been splashed during the current surge. */
   splashedThisSurge = false;
+  /** The stick input of the last step (Swing Assist predicts the release with it). */
+  readonly input: PlayerInput = { moveX: 0, moveZ: 0, jumpHeld: false, jumpPressed: false };
 
   // ---- Treasure Bottles and Sea Events (src/game/treasure.ts, src/game/seaEvents.ts) ----
   /** Bottles in the world and in the player's hands. Own Rng, so creature rolls are unchanged. */
@@ -83,6 +85,8 @@ export class GameSim {
     this.course = generateCourse(opts.courseSeed);
     this.state = state;
     this.wave = new WaveSim(this.course.endZ - 40);
+    // The session's first wave is Golden; in a tutorial session the first wave is the practice wave, so the one after it.
+    this.wave.setFirstGolden(state.ftue.done ? 0 : 1);
     const seed = opts.rngSeed ?? Date.now();
     this.rng = new Rng(seed);
     this.treasure = new TreasureSim(this.course, new Rng((seed ^ 0x5bd1e995) >>> 0));
@@ -234,8 +238,12 @@ export class GameSim {
     for (const a of this.drifting) anchorPosAt(a, this.time, a.pos);
     this.updateStones();
 
+    this.input.moveX = input.moveX;
+    this.input.moveZ = input.moveZ;
+    this.input.jumpHeld = input.jumpHeld;
     this.updateSea(dt);
     this.wave.frozen = this.overrides.waveFrozen || this.sea.freezesWave; // Calm Seas stops the countdown
+    this.wave.track(this.player.pos.z, this.warningLength());
     this.updateWave(dt);
 
     if (this.splashTime > 0) {
@@ -263,6 +271,13 @@ export class GameSim {
     }
 
     this.state.tick(dt);
+  }
+
+  /** How long the warning before the coming surge lasts, from where the player is (see WAVE). */
+  warningLength(): number {
+    if (this.overrides.practiceWave) return WAVE.warningPractice;
+    const zone = zoneAtZ(this.course, this.player.pos.z);
+    return zone < 3 ? WAVE.warningEarly : zone < 5 ? WAVE.warning : WAVE.warningLate;
   }
 
   private updateWave(dt: number): void {

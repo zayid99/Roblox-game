@@ -16,7 +16,7 @@ import {
 } from 'three';
 import type { GuideSpec, LayoutMode, QualitySetting, QualityTier, RequestTimeScale, ScreenPt, SeaEventId, SimEvent } from '../contracts';
 import { NO_GUIDES } from '../contracts';
-import { PHYS, WAVE } from '../game/config';
+import { PHYS } from '../game/config';
 import { groundHeightAt, type Course } from '../game/course';
 import { getSpecies } from '../game/creatures';
 import { activeBuddy } from '../game/hatchery';
@@ -741,7 +741,7 @@ export class GameRenderer {
     this.updateSea(t, dt, sim, reduce);
     // Golden/Big look from the sim every frame (two uniforms), so a rebuild mid-warning keeps it.
     if (wave.phase !== 'calm') this.wave.setVariant(wave.golden, wave.big);
-    this.wave.update(dt, wave, player.pos.x, this.camera.quaternion, this.particles, WAVE.warning);
+    this.wave.update(dt, wave, player.pos.x, this.camera.quaternion, this.particles, wave.warningLen);
 
     // Guides and the predicted landing ring.
     const land = player.mode === 'air' && !splashed ? this.predictLanding(player.pos, player.vel) : null;

@@ -1,14 +1,14 @@
 import { Vector3 } from 'three';
 import { COMBO } from './config';
 import type { Solid } from './course';
-import { NO_INPUT, PlayerSim, type PlayerStats, type PlayerWorld } from './player';
+import { PlayerSim, type PlayerInput, type PlayerStats, type PlayerWorld } from './player';
 import type { ReleaseQuality } from '../contracts';
 
 /** Prediction of the flight after letting go now. */
 export interface ReleasePrediction {
   /** Sampled at equal time steps from the release to the first contact (or the 3 s horizon). */
   points: Vector3[];
-  /** The solid whose top the player lands on first, or null (sea, or nothing within 3 s). */
+  /** The solid whose top the player lands on first, or null (sea, a crumble stone, or nothing within 3 s). */
   landsOn: Solid | null;
   /** Seconds from the release to the first contact (3 when nothing is hit). */
   t: number;
@@ -19,6 +19,8 @@ export interface PredictSource {
   readonly player: PlayerSim;
   readonly course: PlayerWorld;
   readonly state: { readonly stats: PlayerStats };
+  /** The stick the player holds (world space). The ghost keeps holding it, as players do; absent = no input. */
+  readonly input?: { readonly moveX: number; readonly moveZ: number };
 }
 
 export const PREDICT_DT = 1 / 120;
@@ -29,11 +31,14 @@ const ghost = new PlayerSim();
 const track = new Float64Array((MAX_STEPS + 1) * 3);
 const pool: Vector3[] = [];
 const result: ReleasePrediction = { points: [], landsOn: null, t: PREDICT_HORIZON };
+const fwd = new Vector3();
+const held: PlayerInput = { moveX: 0, moveZ: 0, jumpHeld: false, jumpPressed: false };
 
 /**
- * Copies the player with copyFrom(), calls forceRelease(), then steps NO_INPUT at the sim step
- * (1/120 s) for up to 3 s. Drifting anchors and geysers are evaluated at simTime + t (the copy
- * carries the player's clock). Pushes no events and touches nothing in the sim.
+ * Copies the player with copyFrom(), calls forceRelease() (plus the sim's Perfect boost when the release
+ * would rate Perfect), then steps at the sim step (1/120 s) for up to 3 s with the held stick (sim.input)
+ * and no jump. Drifting anchors and geysers are evaluated at simTime + t (the copy carries the player's
+ * clock). A crumble stone does not count as a landing (it sinks). Pushes no events and touches nothing in the sim.
  *
  * The returned object and its points are reused by the next call (no allocation after warm-up):
  * copy what you need to keep.
@@ -41,7 +46,16 @@ const result: ReleasePrediction = { points: [], landsOn: null, t: PREDICT_HORIZO
 export function predictRelease(sim: Readonly<PredictSource>, samples = 20): ReleasePrediction {
   const stats = sim.state.stats;
   ghost.copyFrom(sim.player);
-  if (ghost.mode === 'swing') ghost.forceRelease(stats);
+  if (ghost.mode === 'swing') {
+    const perfect = rateRelease(ghost.swingAngle(ghost.swingForward(fwd)), ghost.vel.y) === 'perfect';
+    ghost.forceRelease(stats);
+    if (perfect) {
+      ghost.vel.x *= COMBO.perfectBoost;
+      ghost.vel.z *= COMBO.perfectBoost;
+    }
+  }
+  held.moveX = sim.input?.moveX ?? 0;
+  held.moveZ = sim.input?.moveZ ?? 0;
 
   track[0] = ghost.pos.x;
   track[1] = ghost.pos.y;
@@ -50,14 +64,14 @@ export function predictRelease(sim: Readonly<PredictSource>, samples = 20): Rele
   let landsOn: Solid | null = null;
   let contact = false;
   while (steps < MAX_STEPS) {
-    ghost.step(PREDICT_DT, NO_INPUT, stats, sim.course);
+    ghost.step(PREDICT_DT, held, stats, sim.course);
     steps++;
     const o = steps * 3;
     track[o] = ghost.pos.x;
     track[o + 1] = ghost.pos.y;
     track[o + 2] = ghost.pos.z;
     if (ghost.events.includes('land')) {
-      landsOn = ghost.groundSolid;
+      landsOn = ghost.groundSolid?.kind === 'stone' ? null : ghost.groundSolid;
       contact = true;
       break;
     }

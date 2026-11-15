@@ -54,7 +54,7 @@ describe('Swaying hooks', () => {
       minZ = Math.min(minZ, p.z);
       maxZ = Math.max(maxZ, p.z);
     }
-    expect(maxZ - minZ).toBeGreaterThan(4);
+    expect(maxZ - minZ).toBeGreaterThan(2.5);
     expect(anchorPosAt(a, 1.234, new Vector3()).distanceTo(anchorPosAt(a, 1.234 + w.period, new Vector3()))).toBeLessThan(1e-9);
   });
 

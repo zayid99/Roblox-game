@@ -10,6 +10,7 @@ function setup(device: 'keyboard' | 'touch' = 'keyboard') {
   const state = new GameState();
   state.ftue.done = true;
   const sim = new GameSim(state, { rngSeed: 3 });
+  sim.wave.setFirstGolden(3); // not the session's Golden first wave: keeps the Golden Wave hint out of these tests
   const toasts: ToastSpec[] = [];
   const opened: (string | undefined)[] = [];
   const hints = new Hints({

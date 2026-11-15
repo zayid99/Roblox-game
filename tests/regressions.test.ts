@@ -245,6 +245,7 @@ describe('Lucky Tide during a surge', () => {
     const s2 = new GameState();
     s2.tokens.luckyTide = 1;
     const t = progression(s2);
+    t.sim.wave.setFirstGolden(3);
     t.sim.wave.count = 2; // surge of wave 3; wave 4 is golden by number
     t.sim.wave.forceSurge();
     t.sim.wave.update(0.01);

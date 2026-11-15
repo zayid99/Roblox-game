@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { HOME_FRONT_Z } from '../src/game/config';
-import { GUIDE_UNTIL_ZONE, guideTarget } from '../src/game/guide';
+import { Vector3 } from 'three';
+import { HOME_FRONT_Z, WAVE } from '../src/game/config';
+import { chooseSafeTarget, GUIDE_UNTIL_ZONE, GUIDE_WAVE_SECONDS, guideTarget } from '../src/game/guide';
 import { ManualClock } from '../src/game/clock';
 import { Progression } from '../src/game/progression';
 import { GameSim } from '../src/game/sim';
@@ -51,10 +52,53 @@ describe('post-tutorial guide arrow', () => {
   it('points at safety when a wave is coming and the player is out on the course', () => {
     const { state, sim } = setup();
     onFirstIsland(sim);
+    sim.wave.track(sim.player.pos.z, WAVE.warningEarly);
     sim.wave.forceSurge();
     expect(sim.wave.phase).not.toBe('calm');
     const t = guideTarget(sim, state)!;
     expect(['home', 'lighthouse']).toContain(t.icon);
+  });
+
+  it('keeps pointing at creatures while the wave is still more than 10 s away', () => {
+    const { state, sim } = setup();
+    onFirstIsland(sim);
+    sim.wave.track(sim.player.pos.z, WAVE.warningLate);
+    sim.wave.setTimer(WAVE.warningLate - 0.1);
+    sim.wave.update(0.01);
+    expect(sim.wave.phase).toBe('warning');
+    expect(sim.wave.timeUntilReaches(sim.player.pos.z)).toBeGreaterThan(GUIDE_WAVE_SECONDS);
+    expect(guideTarget(sim, state)!.icon).toBe('creature');
+    sim.wave.setTimer(GUIDE_WAVE_SECONDS - 4);
+    expect(sim.wave.timeUntilReaches(sim.player.pos.z)).toBeLessThanOrEqual(GUIDE_WAVE_SECONDS);
+    expect(['home', 'lighthouse']).toContain(guideTarget(sim, state)!.icon);
+  });
+
+  it('sticks with its safe spot unless another is at least 1 s quicker (no Home/Pad flicker)', () => {
+    const { sim } = setup();
+    const lh = sim.course.lighthouses[0];
+    const padZ = (lh.pad.min.z + lh.pad.max.z) / 2;
+    const padX = (lh.pad.min.x + lh.pad.max.x) / 2;
+    const speed = 10;
+    const at = new Vector3();
+    // Find a spot on the straight line home where home and the pad are about as quick.
+    let z = HOME_FRONT_Z;
+    while (z > padZ && Math.abs(HOME_FRONT_Z + 2 - z - Math.hypot(padX, padZ - z)) > 1) z -= 0.25;
+    sim.player.pos.set(0, 4, z);
+    const first = chooseSafeTarget(sim, speed, null, at);
+    // Wobble around that spot: the choice must not flip back and forth.
+    const picks = new Set<number>();
+    let key: number | null = first.key;
+    for (let i = 0; i < 40; i++) {
+      sim.player.pos.set(Math.sin(i) * 0.6, 4, z + Math.cos(i * 1.7) * 0.6);
+      key = chooseSafeTarget(sim, speed, key, at).key;
+      picks.add(key);
+    }
+    expect(picks.size).toBe(1);
+    // Far quicker elsewhere: it does switch.
+    sim.player.pos.set(padX, 4, padZ + 3);
+    expect(chooseSafeTarget(sim, speed, -1, at).icon).toBe('lighthouse');
+    sim.player.pos.set(0, 4, HOME_FRONT_Z - 3);
+    expect(chooseSafeTarget(sim, speed, lh.id, at).icon).toBe('home');
   });
 
   it('stays quiet while the player is already safe at home during a wave', () => {
